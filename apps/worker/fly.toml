@@ -1,4 +1,4 @@
-app = "promptdash-worker"
+app = "swarm-worker"
 primary_region = "sjc"
 
 [build]

@@ -1,12 +1,12 @@
-# PromptDash
+# Fly Swarm Orchestrator
 
-A distributed AI orchestration dashboard built on Fly.io infrastructure with collective intelligence capabilities.
+A distributed swarm orchestration system built on Fly.io infrastructure with collective intelligence capabilities.
 
 ## Architecture
 
 The system consists of three main components:
 
-### 1. Dashboard (promptdash.hacking.co)
+### 1. Dashboard (admin.hacking.co)
 - React/Next.js frontend with Tailwind CSS
 - Real-time swarm monitoring and metrics
 - Worker management interface
@@ -39,7 +39,7 @@ Create `.env` files in each app directory:
 
 #### Dashboard (.env.local)
 ```env
-NEXT_PUBLIC_MANAGER_URL=https://promptdash-manager.fly.dev
+NEXT_PUBLIC_MANAGER_URL=https://swarm-manager.fly.dev
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
@@ -52,7 +52,7 @@ SUPABASE_URL=your-supabase-url
 SUPABASE_SERVICE_KEY=your-supabase-service-key
 REDIS_HOST=your-redis-host
 REDIS_PORT=6379
-DASHBOARD_URL=https://promptdash.hacking.co
+DASHBOARD_URL=https://admin.hacking.co
 ```
 
 #### Worker (.env)

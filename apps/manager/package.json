@@ -1,5 +1,5 @@
 {
-  "name": "@promptdash/manager",
+  "name": "@swarm/manager",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,8 +11,8 @@
     "deploy": "fly deploy"
   },
   "dependencies": {
-    "@promptdash/types": "workspace:*",
-    "@promptdash/utils": "workspace:*",
+    "@swarm/types": "workspace:*",
+    "@swarm/utils": "workspace:*",
     "@supabase/supabase-js": "^2.38.0",
     "@bull-board/express": "^5.9.1",
     "bullmq": "^4.14.0",

@@ -51,7 +51,7 @@ swarmRouter.post('/', strictRateLimiter, async (req, res, next) => {
     logger.info(`Creating swarm: ${data.name}`)
 
     // Create Fly app for the swarm
-    const app = await flyService.createApp(`promptdash-${data.name}`)
+    const app = await flyService.createApp(`swarm-${data.name}`)
 
     // Deploy worker configuration
     const workerConfig = {
@@ -98,7 +98,7 @@ swarmRouter.get('/:id', async (req, res, next) => {
     const { id } = req.params
     
     // TODO: Fetch from Supabase
-    const machines = await flyService.listMachines(`promptdash-${id}`)
+    const machines = await flyService.listMachines(`swarm-${id}`)
     
     const swarm = {
       id,
@@ -126,7 +126,7 @@ swarmRouter.put('/:id/scale', strictRateLimiter, async (req, res, next) => {
     
     logger.info(`Scaling swarm ${id} to ${data.workerCount} workers`)
     
-    await flyService.scaleMachines(`promptdash-${id}`, data.workerCount)
+    await flyService.scaleMachines(`swarm-${id}`, data.workerCount)
     
     res.json({ 
       id, 
@@ -145,7 +145,7 @@ swarmRouter.delete('/:id', strictRateLimiter, async (req, res, next) => {
     
     logger.info(`Destroying swarm: ${id}`)
     
-    await flyService.destroyApp(`promptdash-${id}`)
+    await flyService.destroyApp(`swarm-${id}`)
     
     // TODO: Delete from Supabase
     

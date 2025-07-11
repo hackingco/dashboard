@@ -1,4 +1,4 @@
-app = "promptdash-dashboard"
+app = "swarm-dashboard"
 primary_region = "sjc"
 
 [build]

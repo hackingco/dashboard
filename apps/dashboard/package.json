@@ -1,5 +1,5 @@
 {
-  "name": "@promptdash/dashboard",
+  "name": "@swarm/dashboard",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,8 +10,8 @@
     "deploy": "fly deploy"
   },
   "dependencies": {
-    "@promptdash/types": "workspace:*",
-    "@promptdash/utils": "workspace:*",
+    "@swarm/types": "workspace:*",
+    "@swarm/utils": "workspace:*",
     "@supabase/supabase-js": "^2.38.0",
     "@tanstack/react-query": "^5.0.0",
     "next": "14.0.0",

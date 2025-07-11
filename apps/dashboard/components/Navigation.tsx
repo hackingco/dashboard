@@ -30,7 +30,7 @@ export function Navigation() {
         <div className="flex h-16 justify-between">
           <div className="flex">
             <div className="flex flex-shrink-0 items-center">
-              <h2 className="text-xl font-bold text-primary-600">PromptDash</h2>
+              <h2 className="text-xl font-bold text-primary-600">admin.hacking.co</h2>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
               {navigation.map((item) => {
