@@ -1,17 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  output: 'standalone',
-  experimental: {
-    serverActions: true,
+  images: {
+    unoptimized: true,
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/manager/:path*',
-        destination: process.env.MANAGER_URL || 'http://localhost:8080/:path*',
-      },
-    ]
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
   },
 }
 

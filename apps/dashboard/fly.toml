@@ -1,4 +1,4 @@
-app = "swarm-dashboard"
+app = "swarm-admin"
 primary_region = "sjc"
 
 [build]

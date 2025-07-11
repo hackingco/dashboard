@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "app/api/machines/[...path]/route.ts": {
+      "maxDuration": 30
+    }
+  }
+}

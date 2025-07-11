@@ -1,0 +1,61 @@
+{
+  "name": "fly-api-research-swarm",
+  "purpose": "Research Fly.io API capabilities and update admin UI for comprehensive swarm control",
+  "agents": [
+    {
+      "name": "api-researcher",
+      "role": "Analyze Fly.io API documentation and capabilities",
+      "tasks": [
+        "Document all Fly.io machine management endpoints",
+        "Identify swarm scaling capabilities",
+        "Research volume and secret management APIs",
+        "Analyze monitoring and metrics endpoints"
+      ]
+    },
+    {
+      "name": "ui-designer",
+      "role": "Design enhanced UI components for swarm management",
+      "tasks": [
+        "Design TreeView component for swarm/agent hierarchy",
+        "Create metadata display panels",
+        "Design CRUD operation interfaces",
+        "Plan real-time state update visualizations"
+      ]
+    },
+    {
+      "name": "backend-engineer",
+      "role": "Enhance Manager API with new capabilities",
+      "tasks": [
+        "Implement enhanced swarm CRUD endpoints",
+        "Add agent management endpoints",
+        "Create metadata storage and retrieval",
+        "Implement WebSocket for real-time updates"
+      ]
+    },
+    {
+      "name": "frontend-engineer", 
+      "role": "Implement enhanced UI components in dashboard",
+      "tasks": [
+        "Build TreeView component with expand/collapse animations",
+        "Implement CRUD operation forms with validation feedback",
+        "Create detailed metadata displays with filtering",
+        "Add real-time state synchronization with transition effects",
+        "Implement advanced sorting and filtering capabilities",
+        "Add micro-animations for state transitions and user interactions",
+        "Create animated loading states and progress indicators"
+      ]
+    }
+  ],
+  "metadata": {
+    "created": "2025-07-11T16:00:00Z",
+    "priority": "high",
+    "estimatedDuration": "2-3 days",
+    "technologies": ["Fly.io API", "React", "TypeScript", "WebSockets", "TreeView"],
+    "deliverables": [
+      "Enhanced dashboard with full CRUD operations",
+      "TreeView UI for swarm hierarchy",
+      "Real-time state synchronization",
+      "Comprehensive metadata display"
+    ]
+  }
+}

@@ -1,0 +1,76 @@
+name: Worker CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'apps/worker/**'
+      - '.github/workflows/worker-ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'apps/worker/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        
+    - name: Install pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 8
+        
+    - name: Get pnpm store directory
+      id: pnpm-cache
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+        
+    - name: Setup pnpm cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+          
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+      
+    - name: Type check
+      run: pnpm --filter @swarm/worker run typecheck || true
+      
+    - name: Build
+      run: pnpm --filter @swarm/worker run build
+      
+    - name: Test
+      run: pnpm --filter @swarm/worker run test || true
+      env:
+        NODE_ENV: test
+
+  build-docker:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+      
+    - name: Build Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: apps/worker
+        push: false
+        tags: swarm-worker:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max

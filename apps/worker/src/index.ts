@@ -24,13 +24,16 @@ app.get('/health', (req, res) => {
   })
 })
 
+// Metrics tracking
+const metrics = {
+  processed: 0,
+  failed: 0,
+  completed: 0,
+}
+
 // Metrics endpoint
 app.get('/metrics', (req, res) => {
-  res.json({
-    processed: worker.processed,
-    failed: worker.failed,
-    completed: worker.completed,
-  })
+  res.json(metrics)
 })
 
 // Initialize worker
@@ -72,10 +75,14 @@ async function handleProcess(data: any) {
 
 worker.on('completed', (job) => {
   logger.info(`Job ${job.id} completed`)
+  metrics.completed++
+  metrics.processed++
 })
 
 worker.on('failed', (job, err) => {
   logger.error(`Job ${job?.id} failed:`, err)
+  metrics.failed++
+  metrics.processed++
 })
 
 app.listen(PORT, () => {

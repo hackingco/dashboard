@@ -1,0 +1,76 @@
+name: Dashboard CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'apps/dashboard/**'
+      - '.github/workflows/dashboard-ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'apps/dashboard/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        
+    - name: Install pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 8
+        
+    - name: Get pnpm store directory
+      id: pnpm-cache
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+        
+    - name: Setup pnpm cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+          
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+      
+    - name: Type check
+      run: pnpm --filter @swarm/dashboard run typecheck || true
+      
+    - name: Lint
+      run: pnpm --filter @swarm/dashboard run lint
+      
+    - name: Build
+      run: pnpm --filter @swarm/dashboard run build
+      env:
+        NEXT_PUBLIC_LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+        NEXT_PUBLIC_TRUSTGRAPH_API_KEY: ${{ secrets.TRUSTGRAPH_API_KEY }}
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Fly
+      uses: superfly/flyctl-actions/setup-flyctl@master
+      
+    - name: Deploy to Fly
+      run: |
+        cd apps/dashboard
+        flyctl deploy --remote-only
+      env:
+        FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

@@ -1,0 +1,79 @@
+{
+  "hive/objective": {
+    "value": "Build and maintain a distributed AI swarm system",
+    "timestamp": "2025-07-11T18:08:21.064Z",
+    "type": "string"
+  },
+  "hive/queen": {
+    "value": "strategic",
+    "timestamp": "2025-07-11T18:08:21.065Z",
+    "type": "string"
+  },
+  "hive/consensus": {
+    "value": "weighted",
+    "timestamp": "2025-07-11T18:08:21.065Z",
+    "type": "string"
+  },
+  "hive/workers": {
+    "value": [
+      {
+        "name": "researcher",
+        "role": "Information Gatherer",
+        "tasks": [
+          "Analyze requirements",
+          "Research best practices",
+          "Document findings",
+          "Identify dependencies"
+        ],
+        "metadata": {
+          "specialization": "deep analysis",
+          "priority": "high"
+        }
+      },
+      {
+        "name": "coder",
+        "role": "Implementation Specialist",
+        "tasks": [
+          "Write code",
+          "Implement features",
+          "Refactor systems",
+          "Optimize performance"
+        ],
+        "metadata": {
+          "specialization": "software development",
+          "priority": "high"
+        }
+      },
+      {
+        "name": "analyst",
+        "role": "System Analyzer",
+        "tasks": [
+          "Analyze system behavior",
+          "Monitor performance",
+          "Identify bottlenecks",
+          "Propose improvements"
+        ],
+        "metadata": {
+          "specialization": "system analysis",
+          "priority": "medium"
+        }
+      },
+      {
+        "name": "tester",
+        "role": "Quality Assurance",
+        "tasks": [
+          "Test functionality",
+          "Verify implementations",
+          "Report issues",
+          "Validate solutions"
+        ],
+        "metadata": {
+          "specialization": "quality assurance",
+          "priority": "medium"
+        }
+      }
+    ],
+    "timestamp": "2025-07-11T18:08:21.065Z",
+    "type": "array"
+  }
+}

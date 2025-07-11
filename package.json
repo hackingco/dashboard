@@ -14,8 +14,10 @@
     "test": "turbo run test"
   },
   "devDependencies": {
-    "turbo": "^1.10.16",
+    "@supabase/supabase-js": "^2.38.0",
     "@types/node": "^20.0.0",
+    "dotenv": "^16.3.1",
+    "turbo": "^1.10.16",
     "typescript": "^5.0.0"
   }
 }

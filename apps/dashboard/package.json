@@ -10,16 +10,22 @@
     "deploy": "fly deploy"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.0.5",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@supabase/supabase-js": "^2.38.0",
     "@swarm/types": "workspace:*",
     "@swarm/utils": "workspace:*",
-    "@supabase/supabase-js": "^2.38.0",
+    "@swarm/supabase": "workspace:*",
     "@tanstack/react-query": "^5.0.0",
+    "@tanstack/react-query-devtools": "^5.82.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.0.0",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.290.0",
     "next": "14.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.9.0",
-    "lucide-react": "^0.290.0",
-    "clsx": "^2.0.0",
     "tailwind-merge": "^2.0.0"
   },
   "devDependencies": {

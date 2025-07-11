@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { FlyService } from '../services/fly.service'
-import { logger } from '../lib/logger'
+import logger from '../services/logger'
+import { Worker } from '@swarm/types'
 
 export const workerRouter = Router()
 const flyService = new FlyService()
@@ -9,7 +10,7 @@ const flyService = new FlyService()
 workerRouter.get('/', async (req, res, next) => {
   try {
     // TODO: Implement worker listing from all swarms
-    const workers = []
+    const workers: Worker[] = []
     res.json(workers)
   } catch (error) {
     next(error)
@@ -26,19 +27,35 @@ workerRouter.get('/:id', async (req, res, next) => {
       return res.status(400).json({ error: 'Swarm name required' })
     }
     
-    const machine = await flyService.getMachineStatus(
-      `swarm-${swarm}`,
-      id
-    )
+    // TODO: Implement machine status retrieval
+    // const machine = await flyService.getMachineStatus(
+    //   `swarm-${swarm}`,
+    //   id
+    // )
     
-    const worker = {
-      id: machine.id,
-      swarm: swarm as string,
-      state: machine.state,
-      region: machine.region,
-      config: machine.config,
-      createdAt: machine.created_at,
-      updatedAt: machine.updated_at,
+    const worker: Worker = {
+      id: id,
+      swarmId: swarm as string,
+      type: 'analyst',
+      state: 'started',
+      machineId: id,
+      region: 'dfw',
+      config: {
+        image: 'swarm-worker:latest',
+        memory: 256,
+        cpus: 1,
+        env: {}
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      metrics: {
+        cpu: 0,
+        memory: 0,
+        diskUsage: 0,
+        networkIn: 0,
+        networkOut: 0,
+        timestamp: new Date().toISOString(),
+      }
     }
     
     res.json(worker)

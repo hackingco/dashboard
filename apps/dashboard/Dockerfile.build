@@ -1,0 +1,31 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package.json without workspace dependencies
+COPY package.json ./
+
+# Remove workspace dependencies from package.json
+RUN sed -i '/"@swarm\/types":/d' package.json && \
+    sed -i '/"@swarm\/utils":/d' package.json
+
+# Install dependencies
+RUN npm install --production --force
+
+# Copy application files
+COPY . .
+
+# Build the application
+ENV NEXT_TELEMETRY_DISABLED 1
+RUN npm run build
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+USER nodejs
+
+EXPOSE 3000
+
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+
+CMD ["npm", "start"]

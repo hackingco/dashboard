@@ -1,0 +1,24 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install production dependencies
+COPY package.standalone.json ./package.json
+RUN npm install --production
+
+# Copy built files
+COPY dist ./dist
+
+# Copy shared types (built)
+COPY ../../shared/types/dist ./node_modules/@swarm/types/dist
+COPY ../../shared/types/package.json ./node_modules/@swarm/types/
+COPY ../../shared/utils/dist ./node_modules/@swarm/utils/dist
+COPY ../../shared/utils/package.json ./node_modules/@swarm/utils/
+
+# Run as non-root user
+RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+USER nodejs
+
+EXPOSE 8080
+
+CMD ["node", "dist/index.js"]

@@ -1,32 +1,19 @@
-FROM node:18-alpine AS base
+FROM node:18-alpine
 
-FROM base AS deps
-RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm ci
+# Copy deployment package without workspace dependencies
+COPY package.deploy.json ./package.json
 
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+# Install production dependencies
+RUN npm install --production --legacy-peer-deps
 
-RUN npm run build
+# Copy built JavaScript files
+COPY dist ./dist
 
-FROM base AS runner
-WORKDIR /app
-
-ENV NODE_ENV production
-
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nodeuser
-
-COPY --from=builder /app/dist ./dist
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json ./
-
-USER nodeuser
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+USER nodejs
 
 EXPOSE 8000
 

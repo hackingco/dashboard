@@ -1,12 +1,37 @@
+export interface CreateSwarmRequest {
+  name: string
+  purpose: string
+  workerCount?: number
+  config?: {
+    maxWorkers?: number
+    taskTimeout?: number
+    retryLimit?: number
+    workerType?: string
+    region?: string
+    cpus?: number
+    memory?: number
+  }
+}
+
 export interface Swarm {
   id: string
   name: string
-  status: 'active' | 'inactive' | 'deploying' | 'error'
+  purpose: string
+  status: 'initializing' | 'running' | 'stopped' | 'error'
   workerCount: number
-  workerType: 'researcher' | 'coder' | 'analyst' | 'tester' | 'generic'
-  flyAppName: string
-  createdAt: string
-  updatedAt?: string
+  createdAt: Date
+  updatedAt: Date
+  config: {
+    maxWorkers: number
+    taskTimeout: number
+    retryLimit: number
+  }
+  metrics: {
+    tasksCompleted: number
+    tasksFailed: number
+    averageTaskTime: number
+  }
+  error?: string
 }
 
 export interface Worker {

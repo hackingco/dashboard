@@ -1,0 +1,83 @@
+{
+  "name": "HiveMind-1752257301065",
+  "purpose": "Build and maintain a distributed AI swarm system",
+  "agents": [
+    {
+      "name": "researcher",
+      "role": "Information Gatherer",
+      "tasks": [
+        "Analyze requirements",
+        "Research best practices",
+        "Document findings",
+        "Identify dependencies"
+      ],
+      "metadata": {
+        "specialization": "deep analysis",
+        "priority": "high"
+      }
+    },
+    {
+      "name": "coder",
+      "role": "Implementation Specialist",
+      "tasks": [
+        "Write code",
+        "Implement features",
+        "Refactor systems",
+        "Optimize performance"
+      ],
+      "metadata": {
+        "specialization": "software development",
+        "priority": "high"
+      }
+    },
+    {
+      "name": "analyst",
+      "role": "System Analyzer",
+      "tasks": [
+        "Analyze system behavior",
+        "Monitor performance",
+        "Identify bottlenecks",
+        "Propose improvements"
+      ],
+      "metadata": {
+        "specialization": "system analysis",
+        "priority": "medium"
+      }
+    },
+    {
+      "name": "tester",
+      "role": "Quality Assurance",
+      "tasks": [
+        "Test functionality",
+        "Verify implementations",
+        "Report issues",
+        "Validate solutions"
+      ],
+      "metadata": {
+        "specialization": "quality assurance",
+        "priority": "medium"
+      }
+    }
+  ],
+  "configuration": {
+    "maxWorkers": 10,
+    "autoScale": true,
+    "priority": "high",
+    "timeout": 300,
+    "retries": 3,
+    "environment": {
+      "HIVE_QUEEN_TYPE": "strategic",
+      "HIVE_CONSENSUS": "weighted"
+    }
+  },
+  "tags": [
+    "hive-mind",
+    "strategic",
+    "distributed-ai"
+  ],
+  "metadata": {
+    "queenType": "strategic",
+    "consensusAlgorithm": "weighted",
+    "initialized": "2025-07-11T18:08:21.065Z"
+  }
+}

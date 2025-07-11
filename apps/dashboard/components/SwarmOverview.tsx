@@ -10,7 +10,11 @@ interface SwarmStats {
   failedTasks: number
 }
 
-export function SwarmOverview() {
+interface SwarmOverviewProps {
+  className?: string
+}
+
+export function SwarmOverview({ className }: SwarmOverviewProps) {
   const { data: stats, isLoading } = useQuery<SwarmStats>({
     queryKey: ['swarm-stats'],
     queryFn: async () => {
@@ -60,7 +64,7 @@ export function SwarmOverview() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${className || ''}`}>
       {cards.map((card) => {
         const Icon = card.icon
         return (

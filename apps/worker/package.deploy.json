@@ -1,0 +1,16 @@
+{
+  "name": "@swarm/worker",
+  "version": "0.1.0",
+  "description": "Swarm Worker Service",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "bullmq": "^4.14.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "redis": "^4.6.10",
+    "winston": "^3.11.0"
+  }
+}
