@@ -27,7 +27,7 @@ workerRouter.get('/:id', async (req, res, next) => {
     }
     
     const machine = await flyService.getMachineStatus(
-      `swarm-${swarm}`,
+      `promptdash-${swarm}`,
       id
     )
     

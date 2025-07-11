@@ -1,4 +1,4 @@
-app = "swarm-manager"
+app = "promptdash-manager"
 primary_region = "sjc"
 
 [build]
@@ -28,5 +28,5 @@ primary_region = "sjc"
     handlers = ["tls", "http"]
 
 [mounts]
-  source = "swarm_data"
+  source = "promptdash_data"
   destination = "/data"

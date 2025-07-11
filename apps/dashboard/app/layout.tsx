@@ -6,8 +6,8 @@ import { Providers } from './providers'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Swarm Dashboard - admin.hacking.co',
-  description: 'Fly Swarm Orchestrator Dashboard',
+  title: 'PromptDash - AI Orchestration Dashboard',
+  description: 'Distributed AI orchestration and management platform',
 }
 
 export default function RootLayout({

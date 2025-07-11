@@ -1,8 +1,8 @@
-# Fly Swarm Orchestrator - Setup Guide
+# PromptDash - Setup Guide
 
 ## Initial Setup Complete ✅
 
-The Fly Swarm Orchestrator codebase has been successfully created and committed to git.
+The PromptDash codebase has been successfully created and committed to git.
 
 ## Next Steps
 
@@ -170,11 +170,11 @@ The following integrations are prepared but require additional setup:
 
 Create an issue at https://github.com/hackingco/dashboard/issues with:
 
-**Title:** Initial Fly Swarm Orchestrator Setup
+**Title:** Initial PromptDash Setup
 
 **Body:**
 ```markdown
-## Fly Swarm Orchestrator - Initial Setup Complete
+## PromptDash - Initial Setup Complete
 
 ### Completed Tasks
 - [x] Bootstrap Fly.io infrastructure (Dashboard, Manager, Worker apps)

@@ -45,5 +45,5 @@ app.use(errorHandler)
 
 // Start server
 app.listen(PORT, () => {
-  logger.info(`Swarm Manager API running on port ${PORT}`)
+  logger.info(`PromptDash Manager API running on port ${PORT}`)
 })
