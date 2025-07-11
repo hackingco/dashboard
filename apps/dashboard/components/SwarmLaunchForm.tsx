@@ -42,9 +42,15 @@ export function SwarmLaunchForm({ onSubmit, isLoading = false }: SwarmLaunchForm
   const [appName, setAppName] = useState('');
   const [region, setRegion] = useState('dfw');
   const [dockerImage, setDockerImage] = useState('');
+  const [cpuConfig, setCpuConfig] = useState(1);
+  const [memoryConfig, setMemoryConfig] = useState(256);
+  const [minInstances, setMinInstances] = useState(1);
+  const [maxInstances, setMaxInstances] = useState(10);
   const [envVars, setEnvVars] = useState<EnvVar[]>([
     { key: 'NODE_ENV', value: 'production' },
     { key: 'WORKER_TYPE', value: 'general' },
+    { key: 'SWARM_COORDINATION', value: 'enabled' },
+    { key: 'TRUST_GRAPH_ENABLED', value: 'true' },
   ]);
 
   const handleAddEnvVar = () => {
@@ -80,13 +86,16 @@ export function SwarmLaunchForm({ onSubmit, isLoading = false }: SwarmLaunchForm
     const formData = {
       appName,
       region,
-      dockerImage: dockerImage || 'flyio/hellofly:latest',
+      dockerImage: dockerImage || 'ghcr.io/ruvnet/claude-swarm:latest',
       env,
       config: {
-        cpus: 1,
-        memory: 256,
-        minInstances: 1,
-        maxInstances: 10,
+        cpus: cpuConfig,
+        memory: memoryConfig,
+        minInstances,
+        maxInstances,
+        autoScale: true,
+        healthCheckPath: '/health',
+        healthCheckTimeout: 10,
       },
     };
 
@@ -150,11 +159,79 @@ export function SwarmLaunchForm({ onSubmit, isLoading = false }: SwarmLaunchForm
               id="dockerImage"
               value={dockerImage}
               onChange={(e) => setDockerImage(e.target.value)}
-              placeholder="flyio/hellofly:latest"
+              placeholder="ghcr.io/ruvnet/claude-swarm:latest"
             />
             <p className="text-xs text-muted-foreground">
-              Leave empty to use default worker image
+              Leave empty to use default Claude swarm worker image
             </p>
+          </div>
+
+          {/* Resource Configuration */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label htmlFor="cpuConfig" className="text-sm font-medium">
+                CPU Cores
+              </label>
+              <Select value={cpuConfig.toString()} onValueChange={(v) => setCpuConfig(parseInt(v))}>
+                <SelectTrigger id="cpuConfig">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 CPU</SelectItem>
+                  <SelectItem value="2">2 CPUs</SelectItem>
+                  <SelectItem value="4">4 CPUs</SelectItem>
+                  <SelectItem value="8">8 CPUs</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="memoryConfig" className="text-sm font-medium">
+                Memory (MB)
+              </label>
+              <Select value={memoryConfig.toString()} onValueChange={(v) => setMemoryConfig(parseInt(v))}>
+                <SelectTrigger id="memoryConfig">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="256">256 MB</SelectItem>
+                  <SelectItem value="512">512 MB</SelectItem>
+                  <SelectItem value="1024">1 GB</SelectItem>
+                  <SelectItem value="2048">2 GB</SelectItem>
+                  <SelectItem value="4096">4 GB</SelectItem>
+                  <SelectItem value="8192">8 GB</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Scaling Configuration */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label htmlFor="minInstances" className="text-sm font-medium">
+                Min Instances
+              </label>
+              <Input
+                id="minInstances"
+                type="number"
+                min="1"
+                max="50"
+                value={minInstances}
+                onChange={(e) => setMinInstances(parseInt(e.target.value) || 1)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="maxInstances" className="text-sm font-medium">
+                Max Instances
+              </label>
+              <Input
+                id="maxInstances"
+                type="number"
+                min="1"
+                max="100"
+                value={maxInstances}
+                onChange={(e) => setMaxInstances(parseInt(e.target.value) || 10)}
+              />
+            </div>
           </div>
 
           {/* Environment Variables */}

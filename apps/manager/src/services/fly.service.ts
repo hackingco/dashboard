@@ -52,6 +52,16 @@ export class FlyService {
 
   async createMachine(appName: string, config: any): Promise<any> {
     try {
+      // Validate required configuration
+      if (!config.swarmId) {
+        throw new Error('swarmId is required for machine creation');
+      }
+
+      // Validate Fly API token
+      if (!this.flyApiToken) {
+        throw new Error('FLY_API_TOKEN is not configured');
+      }
+
       // Create machine configuration
       const machineConfig = {
         name: `${appName}-worker`,
@@ -63,13 +73,16 @@ export class FlyService {
             WORKER_TYPE: config.workerType || 'general',
             SWARM_ID: config.swarmId,
             REDIS_URL: process.env.REDIS_URL || '',
-            // Add observability env vars
-            LANGFUSE_SECRET_KEY: config.env?.LANGFUSE_SECRET_KEY || '',
-            LANGFUSE_PUBLIC_KEY: config.env?.LANGFUSE_PUBLIC_KEY || '',
-            LANGFUSE_HOST: config.env?.LANGFUSE_HOST || 'https://cloud.langfuse.com',
-            TRUSTGRAPH_API_KEY: config.env?.TRUSTGRAPH_API_KEY || '',
-            TRUSTGRAPH_API_URL: config.env?.TRUSTGRAPH_API_URL || '',
-            // Add any custom env vars
+            // Add observability env vars with fallback to process.env
+            LANGFUSE_SECRET_KEY: config.env?.LANGFUSE_SECRET_KEY || process.env.LANGFUSE_SECRET_KEY || '',
+            LANGFUSE_PUBLIC_KEY: config.env?.LANGFUSE_PUBLIC_KEY || process.env.LANGFUSE_PUBLIC_KEY || '',
+            LANGFUSE_HOST: config.env?.LANGFUSE_HOST || process.env.LANGFUSE_HOST || 'https://cloud.langfuse.com',
+            TRUSTGRAPH_API_KEY: config.env?.TRUSTGRAPH_API_KEY || process.env.TRUSTGRAPH_API_KEY || '',
+            TRUSTGRAPH_API_URL: config.env?.TRUSTGRAPH_API_URL || process.env.TRUSTGRAPH_API_URL || '',
+            // Supabase connection for workers
+            SUPABASE_URL: process.env.SUPABASE_URL || '',
+            SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+            // Add any custom env vars (these override defaults)
             ...config.env,
           },
           services: [
@@ -97,10 +110,29 @@ export class FlyService {
       };
 
       // Create the machine
-      const machine = await this.flyApiRequest('POST', `/apps/${appName}/machines`, machineConfig);
-      logger.info(`Created machine for app: ${appName}`, { machineId: machine.id });
+      const machine = await this.flyApiRequest('POST', `/apps/${appName}/machines`, machineConfig) as any;
+      logger.info(`Created machine for app: ${appName}`, { 
+        machineId: machine.id,
+        region: machine.region,
+        state: machine.state,
+        cpus: config.cpus,
+        memory: config.memory
+      });
       
-      return machine;
+      // Return machine details with additional metadata
+      return {
+        id: machine.id,
+        state: machine.state,
+        region: machine.region,
+        instance_id: machine.instance_id,
+        private_ip: machine.private_ip,
+        created_at: machine.created_at,
+        config: {
+          cpus: config.cpus || 1,
+          memory: config.memory || 256,
+          image: config.dockerImage || 'flyio/hellofly:latest',
+        }
+      };
     } catch (error) {
       logger.error('Failed to create machine', { appName, error });
       throw error;
@@ -154,6 +186,39 @@ export class FlyService {
       return stdout.split('\n').filter(line => line.trim());
     } catch (error) {
       logger.error('Failed to get app logs', { appName, error });
+      throw error;
+    }
+  }
+
+  async getMachineMetadata(appName: string, machineId: string): Promise<any> {
+    try {
+      const machine = await this.flyApiRequest('GET', `/apps/${appName}/machines/${machineId}`) as any;
+      logger.info(`Retrieved machine metadata`, { appName, machineId });
+      
+      return {
+        id: machine.id,
+        state: machine.state,
+        region: machine.region,
+        instance_id: machine.instance_id,
+        private_ip: machine.private_ip,
+        created_at: machine.created_at,
+        updated_at: machine.updated_at,
+        config: machine.config,
+        events: machine.events,
+      };
+    } catch (error) {
+      logger.error('Failed to get machine metadata', { appName, machineId, error });
+      throw error;
+    }
+  }
+
+  async listMachines(appName: string): Promise<any[]> {
+    try {
+      const machines = await this.flyApiRequest('GET', `/apps/${appName}/machines`) as any[];
+      logger.info(`Listed machines for app: ${appName}`, { count: machines.length });
+      return machines;
+    } catch (error) {
+      logger.error('Failed to list machines', { appName, error });
       throw error;
     }
   }

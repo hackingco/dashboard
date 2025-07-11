@@ -1,0 +1,351 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  checks: write
+
+jobs:
+  # PR Validation
+  pr-validation:
+    name: PR Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PR Title Check
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check PR Size
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const { additions, deletions } = pr;
+            const totalChanges = additions + deletions;
+            
+            if (totalChanges > 1000) {
+              core.warning(`This PR has ${totalChanges} changes. Consider breaking it into smaller PRs.`);
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: `⚠️ This PR contains ${totalChanges} changes. Large PRs are harder to review. Consider breaking this into smaller, focused PRs.`
+              });
+            }
+
+  # Dependency Check
+  dependency-check:
+    name: Dependency Security Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+  # Code Coverage Check
+  coverage-check:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests with coverage
+        run: pnpm run test:coverage
+
+      - name: Coverage Report
+        uses: 5monkeys/cobertura-action@master
+        with:
+          minimum_coverage: 70
+          fail_below_threshold: false
+          report_name: Coverage Report
+          path: coverage/cobertura-coverage.xml
+
+  # Type Safety Check
+  type-safety:
+    name: Type Safety
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type checking
+        run: |
+          pnpm run typecheck:all
+          
+      - name: Report type errors
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: '❌ Type checking failed. Please fix TypeScript errors before merging.'
+            });
+
+  # Automated Tests
+  automated-tests:
+    name: Automated Test Suite
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run all tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+        run: |
+          pnpm run test:unit
+          pnpm run test:integration
+
+      - name: Test Summary
+        if: always()
+        uses: test-summary/action@v2
+        with:
+          paths: |
+            **/test-results.xml
+            **/junit.xml
+
+  # Documentation Check
+  docs-check:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for documentation
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const files = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number
+            });
+            
+            const hasCodeChanges = files.data.some(file => 
+              file.filename.endsWith('.ts') || 
+              file.filename.endsWith('.tsx') ||
+              file.filename.endsWith('.js')
+            );
+            
+            const hasDocChanges = files.data.some(file => 
+              file.filename.endsWith('.md') ||
+              file.filename.includes('docs/')
+            );
+            
+            if (hasCodeChanges && !hasDocChanges) {
+              core.warning('Code changes detected without documentation updates');
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: '📝 This PR contains code changes but no documentation updates. Please consider updating relevant documentation.'
+              });
+            }
+
+  # Performance Impact Check
+  performance-impact:
+    name: Performance Impact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and analyze bundle size
+        run: |
+          pnpm --filter @swarm/dashboard run build
+          pnpm --filter @swarm/dashboard run analyze
+
+      - name: Report bundle size
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            try {
+              const bundleStats = JSON.parse(
+                fs.readFileSync(path.join(process.env.GITHUB_WORKSPACE, 'apps/dashboard/bundle-stats.json'), 'utf8')
+              );
+              
+              const comment = `
+              ## 📦 Bundle Size Analysis
+              
+              | Metric | Size |
+              |--------|------|
+              | Total Size | ${bundleStats.totalSize} |
+              | JS Size | ${bundleStats.jsSize} |
+              | CSS Size | ${bundleStats.cssSize} |
+              
+              <details>
+              <summary>Detailed breakdown</summary>
+              
+              \`\`\`
+              ${JSON.stringify(bundleStats.chunks, null, 2)}
+              \`\`\`
+              
+              </details>
+              `;
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: comment
+              });
+            } catch (error) {
+              console.log('Bundle stats not available');
+            }
+
+  # AI Code Review
+  ai-review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: AI Code Review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const files = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number
+            });
+            
+            // Focus on critical files
+            const criticalFiles = files.data.filter(file => 
+              file.filename.includes('auth') ||
+              file.filename.includes('api') ||
+              file.filename.includes('security') ||
+              file.filename.includes('database')
+            );
+            
+            if (criticalFiles.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: `🔍 **Critical files detected for review:**\n\n${criticalFiles.map(f => `- ${f.filename}`).join('\n')}\n\nPlease ensure these changes have been thoroughly reviewed for security and performance implications.`
+              });
+            }
+
+  # Summary Status
+  pr-status:
+    name: PR Status Summary
+    runs-on: ubuntu-latest
+    needs: [pr-validation, dependency-check, coverage-check, type-safety, automated-tests]
+    if: always()
+    steps:
+      - name: Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const jobs = ${{ toJSON(needs) }};
+            const allPassed = Object.values(jobs).every(job => job.result === 'success');
+            
+            const emoji = allPassed ? '✅' : '❌';
+            const status = allPassed ? 'All checks passed!' : 'Some checks failed';
+            
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'PR Status',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: allPassed ? 'success' : 'failure',
+              output: {
+                title: `${emoji} ${status}`,
+                summary: `PR checks completed with status: ${status}`
+              }
+            });

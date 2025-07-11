@@ -14,6 +14,7 @@ import enhancedSwarmRouter from './routes/enhanced-swarms'
 import { workerRouter } from './routes/workers'
 import { taskRouter } from './routes/tasks'
 import { healthRouter } from './routes/health'
+import telemetryRouter from './routes/telemetry'
 
 // Load environment variables
 config()
@@ -45,6 +46,7 @@ app.use('/api/swarms', swarmRouter)
 app.use('/api/enhanced-swarms', enhancedSwarmRouter)
 app.use('/api/workers', workerRouter)
 app.use('/api/tasks', taskRouter)
+app.use('/api/telemetry', telemetryRouter)
 app.use('/admin/queues', serverAdapter.getRouter())
 
 // Error handling

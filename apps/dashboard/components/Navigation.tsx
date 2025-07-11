@@ -8,7 +8,8 @@ import {
   Users, 
   Activity, 
   Settings,
-  GitBranch
+  GitBranch,
+  BarChart3
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +17,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Swarms', href: '/swarms', icon: Server },
   { name: 'Workers', href: '/workers', icon: Users },
+  { name: 'Observability', href: '/observability', icon: BarChart3 },
   { name: 'Activity', href: '/activity', icon: Activity },
   { name: 'Integrations', href: '/integrations', icon: GitBranch },
   { name: 'Settings', href: '/settings', icon: Settings },

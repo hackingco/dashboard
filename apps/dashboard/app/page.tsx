@@ -9,12 +9,15 @@ import { SwarmTopology } from '@/components/observability/SwarmTopology';
 import { TaskTimeline } from '@/components/observability/TaskTimeline';
 import { PerformanceMonitor } from '@/components/observability/PerformanceMonitor';
 import { LogViewer } from '@/components/observability/LogViewer';
+import { TrustGraph } from '@/components/observability/TrustGraph';
+import { LangfuseTraces } from '@/components/observability/LangfuseTraces';
+import { SwarmStatusDisplay } from '@/components/SwarmStatusDisplay';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { SwarmLaunchForm } from '@/components/SwarmLaunchForm';
-import { RefreshCw, Plus, Activity, Network, Terminal, BarChart3, Rocket, Eye } from 'lucide-react';
+import { RefreshCw, Plus, Activity, Network, Terminal, BarChart3, Rocket, Eye, GitBranch, Zap } from 'lucide-react';
 
 // Mock data generators
 const generateMockNodes = () => [
@@ -288,10 +291,14 @@ export default function DashboardPage() {
 
         {/* Main Tabs */}
         <Tabs defaultValue="swarms" className="space-y-6">
-          <TabsList className="grid w-full max-w-3xl grid-cols-5">
+          <TabsList className="grid w-full max-w-4xl grid-cols-6">
             <TabsTrigger value="swarms" className="flex items-center">
               <Rocket className="w-4 h-4 mr-2" />
               Swarms
+            </TabsTrigger>
+            <TabsTrigger value="status" className="flex items-center">
+              <Zap className="w-4 h-4 mr-2" />
+              Real-time
             </TabsTrigger>
             <TabsTrigger value="topology" className="flex items-center">
               <Network className="w-4 h-4 mr-2" />
@@ -352,6 +359,18 @@ export default function DashboardPage() {
             </div>
           </TabsContent>
 
+          <TabsContent value="status" className="space-y-6">
+            <SwarmStatusDisplay 
+              swarmId="primary-swarm"
+              autoRefresh={true}
+              refreshInterval={3000}
+              onSwarmAction={(action, swarmId) => {
+                console.log(`${action} action triggered for swarm: ${swarmId}`);
+                // In production, this would call the API
+              }}
+            />
+          </TabsContent>
+
           <TabsContent value="topology" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <SwarmTopology nodes={nodes} edges={edges} />
@@ -373,34 +392,15 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="observability" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Network className="w-5 h-5 mr-2" />
-                    TrustGraph DAG
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-96 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                    <p className="text-gray-500 dark:text-gray-400">TrustGraph visualization coming soon...</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Activity className="w-5 h-5 mr-2" />
-                    Langfuse LLM Traces
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-96 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                    <p className="text-gray-500 dark:text-gray-400">Langfuse integration coming soon...</p>
-                  </div>
-                </CardContent>
-              </Card>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <TrustGraph 
+                onRefresh={() => console.log('Refreshing TrustGraph data...')}
+                onNodeClick={(node) => console.log('Node clicked:', node)}
+              />
+              <LangfuseTraces 
+                sessionId="primary-session"
+                onTraceSelect={(trace) => console.log('Trace selected:', trace)}
+              />
             </div>
           </TabsContent>
 

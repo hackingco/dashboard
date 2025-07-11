@@ -63,6 +63,32 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Name and purpose are required' });
     }
 
+    // Validate environment variables if provided
+    if (createRequest.config?.env) {
+      const env = createRequest.config.env;
+      
+      // Validate Langfuse configuration if provided
+      if (env.LANGFUSE_SECRET_KEY && !env.LANGFUSE_PUBLIC_KEY) {
+        return res.status(400).json({ 
+          error: 'LANGFUSE_PUBLIC_KEY is required when LANGFUSE_SECRET_KEY is provided' 
+        });
+      }
+      
+      // Validate TrustGraph configuration if provided
+      if (env.TRUSTGRAPH_API_KEY && !env.TRUSTGRAPH_API_URL) {
+        return res.status(400).json({ 
+          error: 'TRUSTGRAPH_API_URL is required when TRUSTGRAPH_API_KEY is provided' 
+        });
+      }
+    }
+
+    // Validate Fly API token is available
+    if (!process.env.FLY_API_TOKEN) {
+      return res.status(500).json({ 
+        error: 'Server configuration error: FLY_API_TOKEN is not configured' 
+      });
+    }
+
     // Generate Fly app name
     const appName = `swarm-${createRequest.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
 
@@ -129,7 +155,7 @@ router.post('/', async (req, res) => {
         worker_count: 1,
       });
 
-      // Create worker record
+      // Create worker record with comprehensive machine metadata
       await workerOperations.create({
         swarm_id: swarm.id,
         name: `${swarm.name}-worker-1`,
@@ -139,6 +165,11 @@ router.post('/', async (req, res) => {
         config: {
           cpus: deployConfig.cpus,
           memory: deployConfig.memory,
+          region: machine.region,
+          image: machine.config?.image || deployConfig.dockerImage,
+          private_ip: machine.private_ip,
+          instance_id: machine.instance_id,
+          created_at: machine.created_at,
         },
       });
 
@@ -152,7 +183,7 @@ router.post('/', async (req, res) => {
       });
       
       // Track successful deployment
-      await telemetryService.trackSwarmDeployment(swarm.id, machineId, true);
+      await telemetryService.trackSwarmDeployment(swarm.id, machineId || '', true);
     } catch (error) {
       logger.error('Failed to create Fly app', { appName, error });
       
@@ -222,22 +253,29 @@ router.get('/:id', async (req, res) => {
  * Update a swarm
  */
 router.put('/:id', async (req, res) => {
-  const swarm = swarms.get(req.params.id);
-  
-  if (!swarm) {
-    return res.status(404).json({ error: 'Swarm not found' });
-  }
+  try {
+    const swarm = await swarmOperations.get(req.params.id);
+    
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
 
-  // Update swarm properties
-  const updates = req.body;
-  if (updates.name) swarm.name = updates.name;
-  if (updates.purpose) swarm.purpose = updates.purpose;
-  if (updates.config) {
-    swarm.config = { ...swarm.config, ...updates.config };
-  }
-  swarm.updatedAt = new Date();
+    // Update swarm properties
+    const updates = req.body;
+    const updateData: any = {};
+    
+    if (updates.name) updateData.name = updates.name;
+    if (updates.purpose) updateData.purpose = updates.purpose;
+    if (updates.config) {
+      updateData.config = { ...swarm.config, ...updates.config };
+    }
 
-  res.json(swarm);
+    const updatedSwarm = await swarmOperations.update(swarm.id, updateData);
+    res.json(updatedSwarm);
+  } catch (error) {
+    logger.error('Failed to update swarm', { error });
+    res.status(500).json({ error: 'Failed to update swarm' });
+  }
 });
 
 /**
@@ -245,22 +283,109 @@ router.put('/:id', async (req, res) => {
  * Delete a swarm
  */
 router.delete('/:id', async (req, res) => {
-  const swarm = swarms.get(req.params.id);
-  
-  if (!swarm) {
-    return res.status(404).json({ error: 'Swarm not found' });
-  }
-
-  // Delete Fly app
   try {
-    const appName = flyService.swarmToFlyApp(swarm);
-    await flyService.deleteApp(appName);
-  } catch (error) {
-    logger.error('Failed to delete Fly app', { error });
-  }
+    const swarm = await swarmOperations.get(req.params.id);
+    
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
 
-  swarms.delete(req.params.id);
-  res.status(204).send();
+    // Delete Fly app
+    try {
+      if (swarm.fly_app_name) {
+        await flyService.deleteApp(swarm.fly_app_name);
+      }
+    } catch (error) {
+      logger.error('Failed to delete Fly app', { error });
+    }
+
+    // Delete from database
+    await swarmOperations.delete(req.params.id);
+    res.status(204).send();
+  } catch (error) {
+    logger.error('Failed to delete swarm', { error });
+    res.status(500).json({ error: 'Failed to delete swarm' });
+  }
+});
+
+/**
+ * POST /swarms/:id/machines
+ * Create a new machine in an existing swarm
+ */
+router.post('/:id/machines', async (req, res) => {
+  try {
+    const swarm = await swarmOperations.get(req.params.id);
+    
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    if (!swarm.fly_app_name) {
+      return res.status(400).json({ error: 'Swarm has no Fly app associated' });
+    }
+
+    const { workerType, region, cpus, memory, env } = req.body;
+
+    // Prepare machine configuration
+    const deployConfig = {
+      swarmId: swarm.id,
+      workerType: workerType || 'general',
+      region: region || swarm.config.region || 'dfw',
+      cpus: cpus || swarm.config.cpus || 1,
+      memory: memory || swarm.config.memory || 256,
+      dockerImage: swarm.config.dockerImage,
+      env: { ...swarm.config.env, ...env },
+    };
+
+    // Create new machine
+    const machine = await flyService.createMachine(swarm.fly_app_name, deployConfig);
+
+    // Create worker record
+    const workerName = `${swarm.name}-worker-${Date.now()}`;
+    const worker = await workerOperations.create({
+      swarm_id: swarm.id,
+      name: workerName,
+      type: deployConfig.workerType,
+      status: 'active',
+      machine_id: machine.id,
+      config: {
+        cpus: deployConfig.cpus,
+        memory: deployConfig.memory,
+        region: machine.region,
+        image: machine.config?.image || deployConfig.dockerImage,
+        private_ip: machine.private_ip,
+        instance_id: machine.instance_id,
+        created_at: machine.created_at,
+      },
+    });
+
+    // Update swarm worker count
+    const workers = await workerOperations.listBySwarm(swarm.id);
+    await swarmOperations.update(swarm.id, { 
+      worker_count: workers.length,
+    });
+
+    // Log machine creation
+    await logOperations.create({
+      swarm_id: swarm.id,
+      level: 'info',
+      source: 'manager',
+      message: `New machine created: ${machine.id}`,
+      metadata: { machineId: machine.id, workerName, region: machine.region },
+    });
+
+    // Track with telemetry
+    await telemetryService.trackWorkerAssignment(swarm.id, worker.id);
+
+    res.status(201).json({
+      machine,
+      worker,
+      message: 'Machine created successfully',
+    });
+  } catch (error) {
+    logger.error('Failed to create machine', { error });
+    res.status(500).json({ error: 'Failed to create machine' });
+  }
 });
 
 /**
@@ -268,31 +393,34 @@ router.delete('/:id', async (req, res) => {
  * Scale a swarm's worker count
  */
 router.post('/:id/scale', async (req, res) => {
-  const swarm = swarms.get(req.params.id);
-  
-  if (!swarm) {
-    return res.status(404).json({ error: 'Swarm not found' });
-  }
-
-  const { workerCount } = req.body;
-  
-  if (typeof workerCount !== 'number' || workerCount < 0 || workerCount > swarm.config.maxWorkers) {
-    return res.status(400).json({ 
-      error: `Worker count must be between 0 and ${swarm.config.maxWorkers}` 
-    });
-  }
-
   try {
-    // Scale Fly app
-    const appName = flyService.swarmToFlyApp(swarm);
-    await flyService.scaleApp(appName, workerCount);
+    const swarm = await swarmOperations.get(req.params.id);
     
-    swarm.workerCount = workerCount;
-    swarm.updatedAt = new Date();
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    const { workerCount } = req.body;
+    
+    if (typeof workerCount !== 'number' || workerCount < 0 || workerCount > swarm.config.maxWorkers) {
+      return res.status(400).json({ 
+        error: `Worker count must be between 0 and ${swarm.config.maxWorkers}` 
+      });
+    }
+
+    // Scale Fly app
+    if (swarm.fly_app_name) {
+      await flyService.scaleApp(swarm.fly_app_name, workerCount);
+    }
+    
+    // Update database
+    const updatedSwarm = await swarmOperations.update(swarm.id, { 
+      worker_count: workerCount,
+    });
     
     res.json({ 
       message: `Swarm scaled to ${workerCount} workers`,
-      swarm 
+      swarm: updatedSwarm
     });
   } catch (error) {
     logger.error('Failed to scale swarm', { error });
@@ -305,21 +433,32 @@ router.post('/:id/scale', async (req, res) => {
  * Get logs for a swarm
  */
 router.get('/:id/logs', async (req, res) => {
-  const swarm = swarms.get(req.params.id);
-  
-  if (!swarm) {
-    return res.status(404).json({ error: 'Swarm not found' });
-  }
-
-  const lines = parseInt(req.query.lines as string) || 100;
-
   try {
-    const appName = flyService.swarmToFlyApp(swarm);
-    const logs = await flyService.getAppLogs(appName, lines);
+    const swarm = await swarmOperations.get(req.params.id);
+    
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    const lines = parseInt(req.query.lines as string) || 100;
+
+    // Get both Fly logs and database logs
+    let flyLogs: string[] = [];
+    if (swarm.fly_app_name) {
+      try {
+        flyLogs = await flyService.getAppLogs(swarm.fly_app_name, lines);
+      } catch (error) {
+        logger.warn('Failed to get Fly logs', { error });
+      }
+    }
+
+    // Get database logs
+    const dbLogs = await logOperations.listBySwarm(swarm.id, lines);
     
     res.json({ 
       swarmId: swarm.id,
-      logs 
+      flyLogs,
+      dbLogs
     });
   } catch (error) {
     logger.error('Failed to get swarm logs', { error });
@@ -332,24 +471,27 @@ router.get('/:id/logs', async (req, res) => {
  * Stop a swarm
  */
 router.post('/:id/stop', async (req, res) => {
-  const swarm = swarms.get(req.params.id);
-  
-  if (!swarm) {
-    return res.status(404).json({ error: 'Swarm not found' });
-  }
-
   try {
-    // Scale to 0 to stop
-    const appName = flyService.swarmToFlyApp(swarm);
-    await flyService.scaleApp(appName, 0);
+    const swarm = await swarmOperations.get(req.params.id);
     
-    swarm.status = 'stopped';
-    swarm.workerCount = 0;
-    swarm.updatedAt = new Date();
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    // Scale to 0 to stop
+    if (swarm.fly_app_name) {
+      await flyService.scaleApp(swarm.fly_app_name, 0);
+    }
+    
+    // Update database
+    const updatedSwarm = await swarmOperations.update(swarm.id, {
+      status: 'stopped',
+      worker_count: 0,
+    });
     
     res.json({ 
       message: 'Swarm stopped',
-      swarm 
+      swarm: updatedSwarm 
     });
   } catch (error) {
     logger.error('Failed to stop swarm', { error });
@@ -358,30 +500,75 @@ router.post('/:id/stop', async (req, res) => {
 });
 
 /**
+ * GET /swarms/:id/machines
+ * Get machine metadata for a swarm
+ */
+router.get('/:id/machines', async (req, res) => {
+  try {
+    const swarm = await swarmOperations.get(req.params.id);
+    
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    if (!swarm.fly_app_name) {
+      return res.status(404).json({ error: 'Swarm has no Fly app associated' });
+    }
+
+    // Get machine list from Fly
+    const machines = await flyService.listMachines(swarm.fly_app_name);
+    
+    // Get workers from database for additional metadata
+    const workers = await workerOperations.listBySwarm(swarm.id);
+    
+    // Combine machine data with worker metadata
+    const enrichedMachines = machines.map(machine => {
+      const worker = workers.find(w => w.machine_id === machine.id);
+      return {
+        ...machine,
+        worker: worker || null,
+      };
+    });
+
+    res.json({
+      swarmId: swarm.id,
+      appName: swarm.fly_app_name,
+      machines: enrichedMachines,
+    });
+  } catch (error) {
+    logger.error('Failed to get swarm machines', { error });
+    res.status(500).json({ error: 'Failed to get machine metadata' });
+  }
+});
+
+/**
  * POST /swarms/:id/start
  * Start a swarm
  */
 router.post('/:id/start', async (req, res) => {
-  const swarm = swarms.get(req.params.id);
-  
-  if (!swarm) {
-    return res.status(404).json({ error: 'Swarm not found' });
-  }
-
-  const workerCount = req.body.workerCount || 1;
-
   try {
-    // Scale up to start
-    const appName = flyService.swarmToFlyApp(swarm);
-    await flyService.scaleApp(appName, workerCount);
+    const swarm = await swarmOperations.get(req.params.id);
     
-    swarm.status = 'running';
-    swarm.workerCount = workerCount;
-    swarm.updatedAt = new Date();
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    const workerCount = req.body.workerCount || 1;
+
+    // Scale up to start
+    if (swarm.fly_app_name) {
+      await flyService.scaleApp(swarm.fly_app_name, workerCount);
+    }
+    
+    // Update database
+    const updatedSwarm = await swarmOperations.update(swarm.id, {
+      status: 'running',
+      worker_count: workerCount,
+    });
     
     res.json({ 
       message: 'Swarm started',
-      swarm 
+      swarm: updatedSwarm 
     });
   } catch (error) {
     logger.error('Failed to start swarm', { error });

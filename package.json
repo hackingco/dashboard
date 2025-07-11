@@ -11,13 +11,31 @@
     "build": "turbo run build",
     "deploy": "turbo run deploy",
     "lint": "turbo run lint",
-    "test": "turbo run test"
+    "lint:all": "turbo run lint",
+    "format:check": "turbo run format:check",
+    "typecheck:all": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:unit": "turbo run test:unit",
+    "test:integration": "turbo run test:integration",
+    "test:e2e": "turbo run test:e2e",
+    "test:coverage": "turbo run test:coverage",
+    "test:smoke:staging": "turbo run test:smoke:staging",
+    "test:smoke:production": "turbo run test:smoke:production",
+    "build:all": "turbo run build"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.38.0",
     "@types/node": "^20.0.0",
+    "@playwright/test": "^1.40.0",
+    "@testing-library/react": "^14.1.2",
+    "@testing-library/jest-dom": "^6.1.5",
+    "@vitest/ui": "^1.0.0",
     "dotenv": "^16.3.1",
+    "jsdom": "^23.0.1",
+    "k6": "^0.47.0",
+    "supertest": "^6.3.3",
     "turbo": "^1.10.16",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
   }
 }

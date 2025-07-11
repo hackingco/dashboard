@@ -10,6 +10,9 @@ export interface CreateSwarmRequest {
     region?: string
     cpus?: number
     memory?: number
+    minInstances?: number
+    dockerImage?: string
+    env?: Record<string, string>
   }
 }
 
