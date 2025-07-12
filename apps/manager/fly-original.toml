@@ -1,4 +1,4 @@
-# fly.toml for manager-app - HOTFIX VERSION
+# fly.toml for manager-app
 app = "swarm-manager-live"
 primary_region = "ord"
 
@@ -48,17 +48,16 @@ primary_region = "ord"
     hard_limit = 100
     soft_limit = 80
 
-# HOTFIX: Relaxed health check timings
 [[services.tcp_checks]]
-  interval = "30s"      # Increased from 15s
-  timeout = "10s"       # Increased from 2s
-  grace_period = "30s"  # Increased from 5s
+  interval = "15s"
+  timeout = "2s"
+  grace_period = "5s"
   restart_limit = 0
 
 [[services.http_checks]]
-  interval = "30s"      # Increased from 10s
-  timeout = "10s"       # Increased from 2s
-  grace_period = "30s"  # Increased from 5s
+  interval = "10s"
+  timeout = "2s"
+  grace_period = "5s"
   method = "get"
   path = "/health"
   protocol = "http"
