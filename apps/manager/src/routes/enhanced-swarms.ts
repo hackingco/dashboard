@@ -2,10 +2,22 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { HiveService, AgentService } from '../services/claude-flow';
+import { FlyService } from '../services/fly.service';
+import { WebSocketService } from '../services/websocket.service';
+import logger from '../services/logger';
 
 const router = Router();
 const hiveService = HiveService.getInstance();
 const agentService = AgentService.getInstance();
+const flyService = new FlyService();
+
+// WebSocket service will be injected by main app
+let wsService: WebSocketService | null = null;
+
+// Function to set WebSocket service (called from main app)
+export function setWebSocketService(ws: WebSocketService) {
+  wsService = ws;
+}
 
 // Enhanced Swarm Schema with detailed metadata
 const SwarmSchema = z.object({
@@ -404,13 +416,14 @@ router.get('/stats', (req, res) => {
   res.json(stats);
 });
 
-// POST /enhanced-swarms/:id/scale - Scale swarm agents
+// POST /enhanced-swarms/:id/scale - Scale swarm agents with Fly.io integration
 router.post('/:id/scale', async (req, res) => {
   try {
-    const { targetAgents } = req.body;
+    const { targetAgents, targetCount } = req.body;
+    const finalTargetCount = targetAgents || targetCount;
     
-    if (!targetAgents || targetAgents < 1 || targetAgents > 100) {
-      return res.status(400).json({ error: 'Invalid target agent count' });
+    if (!finalTargetCount || finalTargetCount < 0 || finalTargetCount > 100) {
+      return res.status(400).json({ error: 'Invalid target count (0-100)' });
     }
     
     const swarmIndex = swarms.findIndex(s => s.id === req.params.id);
@@ -418,34 +431,189 @@ router.post('/:id/scale', async (req, res) => {
       return res.status(404).json({ error: 'Swarm not found' });
     }
     
-    // Scale using HiveService
-    await hiveService.scaleSwarm(req.params.id, targetAgents);
+    const swarm = swarms[swarmIndex];
     
-    // Get updated swarm data
-    const hiveSwarm = hiveService.getSwarm(req.params.id);
-    if (!hiveSwarm) {
-      return res.status(404).json({ error: 'Swarm not found in hive' });
+    // Notify WebSocket clients that scaling is starting
+    if (wsService) {
+      wsService.broadcastSwarmUpdate(req.params.id, 'scaling', {
+        targetCount: finalTargetCount,
+        currentCount: swarm.agents.length
+      });
     }
     
-    // Update local swarm data
-    swarms[swarmIndex].agents = hiveSwarm.agents.map(agent => ({
-      ...agent,
-      role: agent.type,
-      tasks: [],
-      lastActivity: agent.metadata?.spawnedAt || hiveSwarm.createdAt
-    }));
-    swarms[swarmIndex].status = hiveSwarm.status;
-    swarms[swarmIndex].lastUpdated = hiveSwarm.lastUpdated;
+    // Update swarm status to scaling
+    swarms[swarmIndex].status = 'scaling';
+    swarms[swarmIndex].lastUpdated = new Date().toISOString();
     
-    res.json({
-      id: req.params.id,
-      status: hiveSwarm.status,
-      currentAgents: hiveSwarm.agents.length,
-      targetAgents
-    });
+    try {
+      // Scale using HiveService for agent management
+      await hiveService.scaleSwarm(req.params.id, finalTargetCount);
+      
+      // Scale Fly.io machines if this swarm has a Fly app
+      if (swarm.flyAppName) {
+        logger.info('Scaling Fly.io app', { appName: swarm.flyAppName, targetCount: finalTargetCount });
+        await flyService.scaleApp(swarm.flyAppName, finalTargetCount);
+        
+        // Notify WebSocket clients about Fly scaling
+        if (wsService) {
+          wsService.broadcastMachineUpdate(swarm.flyAppName, 'all', 'scaled', {
+            targetCount: finalTargetCount
+          });
+        }
+      }
+      
+      // Get updated swarm data
+      const hiveSwarm = hiveService.getSwarm(req.params.id);
+      if (hiveSwarm) {
+        // Update local swarm data
+        swarms[swarmIndex].agents = hiveSwarm.agents.map(agent => ({
+          ...agent,
+          role: agent.type,
+          tasks: [],
+          lastActivity: agent.metadata?.spawnedAt || hiveSwarm.createdAt
+        }));
+        swarms[swarmIndex].status = 'running';
+        swarms[swarmIndex].lastUpdated = hiveSwarm.lastUpdated;
+      }
+      
+      // Notify successful scaling
+      if (wsService) {
+        wsService.broadcastSwarmUpdate(req.params.id, 'scaled', {
+          currentCount: finalTargetCount,
+          targetCount: finalTargetCount
+        });
+      }
+      
+      const response = {
+        id: req.params.id,
+        status: 'running',
+        currentAgents: finalTargetCount,
+        targetAgents: finalTargetCount,
+        flyAppName: swarm.flyAppName,
+        scaled: true,
+        timestamp: new Date().toISOString()
+      };
+      
+      logger.info('Swarm scaling completed', response);
+      res.json(response);
+      
+    } catch (scalingError) {
+      // Reset status on failure
+      swarms[swarmIndex].status = 'error';
+      swarms[swarmIndex].lastUpdated = new Date().toISOString();
+      
+      // Notify WebSocket clients about scaling failure
+      if (wsService) {
+        wsService.broadcastSwarmUpdate(req.params.id, 'error', {
+          error: (scalingError as Error).message,
+          originalTarget: finalTargetCount
+        });
+      }
+      
+      throw scalingError;
+    }
+    
   } catch (error) {
-    console.error('Failed to scale swarm:', error);
-    res.status(500).json({ error: 'Failed to scale swarm: ' + (error as Error).message });
+    logger.error('Failed to scale swarm:', { error, swarmId: req.params.id });
+    res.status(500).json({ 
+      error: 'Failed to scale swarm: ' + (error as Error).message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// POST /enhanced-swarms/:id/launch - Launch swarm on Fly.io
+router.post('/:id/launch', async (req, res) => {
+  try {
+    const swarmIndex = swarms.findIndex(s => s.id === req.params.id);
+    if (swarmIndex === -1) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+    
+    const swarm = swarms[swarmIndex];
+    const { region = 'dfw', cpus = 1, memory = 256 } = req.body;
+    
+    // Generate Fly app name
+    const flyAppName = flyService.swarmToFlyApp(swarm);
+    
+    // Notify WebSocket clients that launch is starting
+    if (wsService) {
+      wsService.broadcastSwarmUpdate(req.params.id, 'launching', {
+        flyAppName,
+        region,
+        cpus,
+        memory
+      });
+    }
+    
+    // Update swarm status
+    swarms[swarmIndex].status = 'initializing';
+    swarms[swarmIndex].flyAppName = flyAppName;
+    swarms[swarmIndex].lastUpdated = new Date().toISOString();
+    
+    try {
+      // Create Fly app
+      await flyService.createApp(flyAppName);
+      
+      // Deploy swarm
+      const machine = await flyService.deployApp(flyAppName, {
+        swarmId: req.params.id,
+        region,
+        cpus,
+        memory,
+        workerType: 'swarm-worker'
+      });
+      
+      // Update swarm with Fly info
+      swarms[swarmIndex].status = 'running';
+      swarms[swarmIndex].metadata = {
+        ...swarms[swarmIndex].metadata,
+        flyMachine: machine,
+        deployedAt: new Date().toISOString()
+      };
+      
+      // Notify successful launch
+      if (wsService) {
+        wsService.broadcastSwarmUpdate(req.params.id, 'launched', {
+          flyAppName,
+          machineId: machine.id,
+          region: machine.region
+        });
+      }
+      
+      const response = {
+        id: req.params.id,
+        status: 'running',
+        flyAppName,
+        machine,
+        launched: true,
+        timestamp: new Date().toISOString()
+      };
+      
+      logger.info('Swarm launched on Fly.io', response);
+      res.json(response);
+      
+    } catch (launchError) {
+      // Reset status on failure
+      swarms[swarmIndex].status = 'error';
+      
+      // Notify WebSocket clients about launch failure
+      if (wsService) {
+        wsService.broadcastSwarmUpdate(req.params.id, 'launch_failed', {
+          error: (launchError as Error).message,
+          flyAppName
+        });
+      }
+      
+      throw launchError;
+    }
+    
+  } catch (error) {
+    logger.error('Failed to launch swarm:', { error, swarmId: req.params.id });
+    res.status(500).json({ 
+      error: 'Failed to launch swarm: ' + (error as Error).message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 

@@ -37,12 +37,21 @@ export interface DAGAnalysis {
   executionOrder: string[];
 }
 
+export interface WSBroadcastNode extends TrustGraphNode {
+  ws_event_type: string;
+  ws_channel: string;
+  ws_payload: Record<string, any>;
+  correlation_id?: string;
+  subscribers_reached?: number;
+}
+
 export class TrustGraphService extends EventEmitter {
   private apiKey: string;
   private apiUrl: string;
   private nodes: Map<string, TrustGraphNode> = new Map();
   private edges: Map<string, TrustGraphEdge> = new Map();
   private taskDependencies: Map<string, TaskDependency> = new Map();
+  private wsBroadcastNodes: Map<string, WSBroadcastNode> = new Map();
   private nodeQueue: TrustGraphNode[] = [];
   private edgeQueue: TrustGraphEdge[] = [];
   private flushInterval: NodeJS.Timeout | null = null;
@@ -481,16 +490,266 @@ export class TrustGraphService extends EventEmitter {
     ]);
   }
 
-  // Export and import
+  // WebSocket Broadcast Node Management
+  async createWSBroadcastNode(
+    wsNode: Omit<WSBroadcastNode, 'timestamp' | 'id'>
+  ): Promise<WSBroadcastNode> {
+    const fullNode: WSBroadcastNode = {
+      ...wsNode,
+      id: `ws_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`,
+      timestamp: new Date()
+    };
+
+    this.wsBroadcastNodes.set(fullNode.id, fullNode);
+    this.nodes.set(fullNode.id, fullNode);
+    this.nodeQueue.push(fullNode);
+    
+    this.emit('ws_node:created', fullNode);
+    logger.debug('Created WebSocket broadcast TrustGraph node', { 
+      id: fullNode.id, 
+      event_type: fullNode.ws_event_type,
+      channel: fullNode.ws_channel
+    });
+    
+    return fullNode;
+  }
+
+  async emitWSBroadcastNode(
+    swarmId: string,
+    eventType: string,
+    channel: string,
+    payload: Record<string, any>,
+    correlationId?: string
+  ): Promise<WSBroadcastNode> {
+    const wsNode = await this.createWSBroadcastNode({
+      type: 'ws_broadcast',
+      label: `WS Broadcast: ${eventType}`,
+      ws_event_type: eventType,
+      ws_channel: channel,
+      ws_payload: {
+        ...payload,
+        swarm_id: swarmId,
+        timestamp: new Date().toISOString()
+      },
+      correlation_id: correlationId,
+      metadata: {
+        swarm_id: swarmId,
+        event_type: eventType,
+        channel: channel,
+        correlation_id: correlationId
+      }
+    });
+
+    // Create edge from triggering event if correlation ID exists
+    if (correlationId) {
+      const triggeringNodes = Array.from(this.nodes.values()).filter(
+        node => node.metadata?.correlation_id === correlationId
+      );
+      
+      for (const triggerNode of triggeringNodes) {
+        if (triggerNode.id !== wsNode.id) {
+          await this.createEdge({
+            source: triggerNode.id,
+            target: wsNode.id,
+            label: 'triggers_broadcast',
+            type: 'triggers',
+            metadata: { correlation_id: correlationId }
+          });
+        }
+      }
+    }
+
+    this.emit('ws_broadcast:emitted', wsNode);
+    return wsNode;
+  }
+
+  getWSBroadcastNodes(
+    swarmId?: string,
+    eventType?: string,
+    channel?: string
+  ): WSBroadcastNode[] {
+    let nodes = Array.from(this.wsBroadcastNodes.values());
+    
+    if (swarmId) {
+      nodes = nodes.filter(node => node.metadata?.swarm_id === swarmId);
+    }
+    
+    if (eventType) {
+      nodes = nodes.filter(node => node.ws_event_type === eventType);
+    }
+    
+    if (channel) {
+      nodes = nodes.filter(node => node.ws_channel === channel);
+    }
+    
+    return nodes.sort((a, b) => 
+      (b.timestamp?.getTime() || 0) - (a.timestamp?.getTime() || 0)
+    );
+  }
+
+  // Enhanced DAG analysis with WebSocket broadcast tracking
+  analyzeSwarmDAG(swarmId: string): DAGAnalysis & {
+    wsBroadcastNodes: number;
+    broadcastChannels: string[];
+    correlationChains: Array<{
+      correlation_id: string;
+      node_count: number;
+      event_types: string[];
+    }>;
+  } {
+    const baseAnalysis = this.analyzeDAG();
+    
+    // Filter nodes by swarm ID
+    const swarmNodes = Array.from(this.nodes.values()).filter(
+      node => node.metadata?.swarm_id === swarmId
+    );
+    
+    const swarmWSNodes = this.getWSBroadcastNodes(swarmId);
+    
+    // Analyze broadcast channels
+    const broadcastChannels = [...new Set(
+      swarmWSNodes.map(node => node.ws_channel)
+    )];
+    
+    // Analyze correlation chains
+    const correlationMap = new Map<string, TrustGraphNode[]>();
+    swarmNodes.forEach(node => {
+      const corrId = node.metadata?.correlation_id;
+      if (corrId) {
+        if (!correlationMap.has(corrId)) {
+          correlationMap.set(corrId, []);
+        }
+        correlationMap.get(corrId)!.push(node);
+      }
+    });
+    
+    const correlationChains = Array.from(correlationMap.entries()).map(
+      ([correlation_id, nodes]) => ({
+        correlation_id,
+        node_count: nodes.length,
+        event_types: [...new Set(nodes.map(n => n.metadata?.event_type || n.type))]
+      })
+    );
+
+    return {
+      ...baseAnalysis,
+      wsBroadcastNodes: swarmWSNodes.length,
+      broadcastChannels,
+      correlationChains
+    };
+  }
+
+  // Real-time graph visualization data
+  getSwarmVisualizationData(swarmId: string): {
+    nodes: Array<TrustGraphNode & { x?: number; y?: number; category?: string }>;
+    edges: TrustGraphEdge[];
+    stats: {
+      totalNodes: number;
+      wsBroadcastNodes: number;
+      apiCallNodes: number;
+      taskNodes: number;
+      correlationChains: number;
+    };
+  } {
+    const swarmNodes = Array.from(this.nodes.values()).filter(
+      node => node.metadata?.swarm_id === swarmId
+    );
+    
+    const swarmEdges = Array.from(this.edges.values()).filter(edge => {
+      const sourceNode = this.nodes.get(edge.source);
+      const targetNode = this.nodes.get(edge.target);
+      return (sourceNode?.metadata?.swarm_id === swarmId) || 
+             (targetNode?.metadata?.swarm_id === swarmId);
+    });
+
+    // Enhanced layout calculation with categories
+    const layout = this.calculateSwarmLayout(swarmNodes, swarmEdges);
+    
+    // Categorize nodes
+    const categorizedNodes = swarmNodes.map(node => ({
+      ...node,
+      ...layout.get(node.id),
+      category: this.categorizeNode(node)
+    }));
+
+    // Calculate statistics
+    const stats = {
+      totalNodes: swarmNodes.length,
+      wsBroadcastNodes: swarmNodes.filter(n => n.type === 'ws_broadcast').length,
+      apiCallNodes: swarmNodes.filter(n => n.type === 'api').length,
+      taskNodes: swarmNodes.filter(n => n.type === 'task').length,
+      correlationChains: new Set(
+        swarmNodes
+          .map(n => n.metadata?.correlation_id)
+          .filter(Boolean)
+      ).size
+    };
+
+    return {
+      nodes: categorizedNodes,
+      edges: swarmEdges,
+      stats
+    };
+  }
+
+  private categorizeNode(node: TrustGraphNode): string {
+    if (node.type === 'ws_broadcast') return 'broadcast';
+    if (node.type === 'api') return 'api_call';
+    if (node.type === 'task') return 'task';
+    if (node.type === 'swarm') return 'swarm';
+    if (node.type === 'worker') return 'worker';
+    return 'other';
+  }
+
+  private calculateSwarmLayout(
+    nodes: TrustGraphNode[], 
+    edges: TrustGraphEdge[]
+  ): Map<string, { x: number; y: number }> {
+    const layout = new Map<string, { x: number; y: number }>();
+    
+    // Group nodes by type and correlation
+    const nodeGroups = {
+      swarm: nodes.filter(n => n.type === 'swarm'),
+      api: nodes.filter(n => n.type === 'api'),
+      task: nodes.filter(n => n.type === 'task'),
+      ws_broadcast: nodes.filter(n => n.type === 'ws_broadcast'),
+      worker: nodes.filter(n => n.type === 'worker'),
+      other: nodes.filter(n => !['swarm', 'api', 'task', 'ws_broadcast', 'worker'].includes(n.type))
+    };
+    
+    let yOffset = 0;
+    const groupSpacing = 150;
+    const nodeSpacing = 120;
+    
+    // Layout each group
+    Object.entries(nodeGroups).forEach(([groupType, groupNodes]) => {
+      if (groupNodes.length === 0) return;
+      
+      groupNodes.forEach((node, index) => {
+        layout.set(node.id, {
+          x: index * nodeSpacing + 50,
+          y: yOffset + 50
+        });
+      });
+      
+      yOffset += groupSpacing;
+    });
+    
+    return layout;
+  }
+
+  // Export and import with WebSocket broadcast data
   exportGraph(): {
     nodes: TrustGraphNode[];
     edges: TrustGraphEdge[];
     dependencies: TaskDependency[];
+    wsBroadcastNodes: WSBroadcastNode[];
   } {
     return {
       nodes: Array.from(this.nodes.values()),
       edges: Array.from(this.edges.values()),
-      dependencies: Array.from(this.taskDependencies.values())
+      dependencies: Array.from(this.taskDependencies.values()),
+      wsBroadcastNodes: Array.from(this.wsBroadcastNodes.values())
     };
   }
 
@@ -498,11 +757,13 @@ export class TrustGraphService extends EventEmitter {
     nodes: TrustGraphNode[];
     edges: TrustGraphEdge[];
     dependencies?: TaskDependency[];
+    wsBroadcastNodes?: WSBroadcastNode[];
   }): void {
     // Clear existing data
     this.nodes.clear();
     this.edges.clear();
     this.taskDependencies.clear();
+    this.wsBroadcastNodes.clear();
 
     // Import nodes
     for (const node of data.nodes) {
@@ -518,6 +779,13 @@ export class TrustGraphService extends EventEmitter {
     if (data.dependencies) {
       for (const dep of data.dependencies) {
         this.taskDependencies.set(dep.taskId, dep);
+      }
+    }
+
+    // Import WebSocket broadcast nodes if provided
+    if (data.wsBroadcastNodes) {
+      for (const wsNode of data.wsBroadcastNodes) {
+        this.wsBroadcastNodes.set(wsNode.id, wsNode);
       }
     }
 
