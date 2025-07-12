@@ -5,6 +5,7 @@ import { swarmOperations, workerOperations, logOperations } from '@swarm/supabas
 import logger from '../services/logger';
 import { FlyService } from '../services/fly.service';
 import { telemetryService } from '../services/telemetry.service';
+import { TraceEndpoint, TraceSwarmOperation } from '../services/langfuse/decorators';
 
 const router = Router();
 const flyService = new FlyService();
@@ -204,6 +205,11 @@ router.post('/', async (req, res) => {
       
       // Track failed deployment
       await telemetryService.trackSwarmDeployment(swarm.id, '', false, error);
+      
+      // Complete operation tracking with error
+      await swarmHooks.onSwarmOperationComplete(operationId, false, {
+        swarmId: swarm.id
+      }, error as Error);
     }
 
     // Get updated swarm

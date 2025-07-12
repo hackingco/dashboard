@@ -1,0 +1,240 @@
+{
+  "dashboard": {
+    "title": "Swarm Service Health Dashboard",
+    "description": "Overall health monitoring for all Swarm services",
+    "version": "1.0.0",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Service Uptime",
+        "type": "stat",
+        "gridPos": { "x": 0, "y": 0, "w": 8, "h": 4 },
+        "targets": [
+          {
+            "expr": "avg(up{job=~\"dashboard|manager|worker\"}) * 100",
+            "legendFormat": "Overall Uptime"
+          }
+        ],
+        "options": {
+          "unit": "percent",
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 95, "color": "yellow" },
+              { "value": 99, "color": "green" }
+            ]
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Error Rate",
+        "type": "graph",
+        "gridPos": { "x": 8, "y": 0, "w": 8, "h": 4 },
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{status=~\"5..\"}[5m]) / rate(http_requests_total[5m]) * 100",
+            "legendFormat": "{{ service }} Error Rate"
+          }
+        ],
+        "options": {
+          "unit": "percent",
+          "showLines": true,
+          "fill": 1
+        }
+      },
+      {
+        "id": 3,
+        "title": "Response Time (P95)",
+        "type": "graph",
+        "gridPos": { "x": 16, "y": 0, "w": 8, "h": 4 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{ service }} P95"
+          }
+        ],
+        "options": {
+          "unit": "s",
+          "showLines": true
+        }
+      },
+      {
+        "id": 4,
+        "title": "Service Health Matrix",
+        "type": "table",
+        "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "up{job=~\"dashboard|manager|worker\"}",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true
+              },
+              "renameByName": {
+                "job": "Service",
+                "instance": "Instance",
+                "Value": "Status"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Request Rate by Service",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])",
+            "legendFormat": "{{ service }} - {{ method }}"
+          }
+        ],
+        "options": {
+          "unit": "reqps",
+          "showLines": true,
+          "stack": true
+        }
+      },
+      {
+        "id": 6,
+        "title": "CPU Usage by Service",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 12, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "expr": "rate(process_cpu_seconds_total[5m]) * 100",
+            "legendFormat": "{{ service }} CPU"
+          }
+        ],
+        "options": {
+          "unit": "percent",
+          "showLines": true,
+          "max": 100
+        }
+      },
+      {
+        "id": 7,
+        "title": "Memory Usage by Service",
+        "type": "graph",
+        "gridPos": { "x": 8, "y": 12, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "expr": "process_resident_memory_bytes / 1024 / 1024",
+            "legendFormat": "{{ service }} Memory"
+          }
+        ],
+        "options": {
+          "unit": "MB",
+          "showLines": true
+        }
+      },
+      {
+        "id": 8,
+        "title": "Active Connections",
+        "type": "graph",
+        "gridPos": { "x": 16, "y": 12, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "expr": "http_connections_active",
+            "legendFormat": "{{ service }} Connections"
+          }
+        ],
+        "options": {
+          "showLines": true
+        }
+      },
+      {
+        "id": 9,
+        "title": "Database Connection Pool",
+        "type": "gauge",
+        "gridPos": { "x": 0, "y": 18, "w": 6, "h": 6 },
+        "targets": [
+          {
+            "expr": "pg_stat_database_numbackends / pg_settings_max_connections * 100",
+            "legendFormat": "Connection Usage"
+          }
+        ],
+        "options": {
+          "unit": "percent",
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 70, "color": "yellow" },
+              { "value": 85, "color": "red" }
+            ]
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Redis Memory Usage",
+        "type": "gauge",
+        "gridPos": { "x": 6, "y": 18, "w": 6, "h": 6 },
+        "targets": [
+          {
+            "expr": "redis_memory_used_bytes / redis_memory_max_bytes * 100",
+            "legendFormat": "Memory Usage"
+          }
+        ],
+        "options": {
+          "unit": "percent",
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 70, "color": "yellow" },
+              { "value": 90, "color": "red" }
+            ]
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "Fly Machine Status",
+        "type": "piechart",
+        "gridPos": { "x": 12, "y": 18, "w": 6, "h": 6 },
+        "targets": [
+          {
+            "expr": "sum by (state) (fly_machine_status)",
+            "legendFormat": "{{ state }}"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Active Swarms",
+        "type": "stat",
+        "gridPos": { "x": 18, "y": 18, "w": 6, "h": 6 },
+        "targets": [
+          {
+            "expr": "active_swarms_total",
+            "legendFormat": "Active Swarms"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        }
+      }
+    ],
+    "refresh": "10s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
+    }
+  }
+}

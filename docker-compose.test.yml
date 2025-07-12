@@ -1,0 +1,202 @@
+version: '3.8'
+
+services:
+  # Test Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: swarm_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Test Redis
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Mock Fly.io API
+  fly-mock:
+    build:
+      context: ./tests/mocks
+      dockerfile: Dockerfile.fly-mock
+    ports:
+      - "8081:8080"
+    environment:
+      MOCK_DELAY: 100
+      MOCK_ERROR_RATE: 0.05
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Manager Service (Test Mode)
+  manager:
+    build:
+      context: ./apps/manager
+      dockerfile: Dockerfile
+      target: test
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: test
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:testpass@postgres:5432/swarm_test
+      REDIS_URL: redis://redis:6379
+      FLY_API_URL: http://fly-mock:8080
+      FLY_API_TOKEN: test-token
+      LOG_LEVEL: debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      fly-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Worker Service (Test Mode)
+  worker:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+      target: test
+    environment:
+      NODE_ENV: test
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://postgres:testpass@postgres:5432/swarm_test
+      FLY_API_URL: http://fly-mock:8080
+      FLY_API_TOKEN: test-token
+      WORKER_CONCURRENCY: 2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      fly-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Dashboard Service (Test Mode)
+  dashboard:
+    build:
+      context: ./apps/dashboard
+      dockerfile: Dockerfile
+      target: test
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: test
+      NEXT_PUBLIC_API_URL: http://manager:3001
+      NEXT_PUBLIC_SUPABASE_URL: http://supabase-kong:8000
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+    depends_on:
+      manager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Test Runner
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test-runner
+    volumes:
+      - ./tests:/tests
+      - ./coverage:/coverage
+      - test_results:/results
+    environment:
+      TEST_ENV: integration
+      DASHBOARD_URL: http://dashboard:3000
+      MANAGER_URL: http://manager:3001
+      DATABASE_URL: postgresql://postgres:testpass@postgres:5432/swarm_test
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      dashboard:
+        condition: service_healthy
+      manager:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    command: |
+      sh -c "
+        echo 'Waiting for services to be ready...'
+        sleep 10
+        echo 'Running integration tests...'
+        pnpm run test:integration
+        echo 'Running E2E tests...'
+        pnpm run test:e2e
+        echo 'Generating coverage report...'
+        pnpm run coverage:merge
+      "
+
+  # Monitoring Stack (Optional)
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.test.yml:/etc/prometheus/prometheus.yml
+      - prometheus_test_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    depends_on:
+      - manager
+      - dashboard
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3030:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+    volumes:
+      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/datasources.test.yml:/etc/grafana/provisioning/datasources/datasources.yml
+      - grafana_test_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_test_data:
+  redis_test_data:
+  prometheus_test_data:
+  grafana_test_data:
+  test_results:
+
+networks:
+  default:
+    name: swarm-test-network

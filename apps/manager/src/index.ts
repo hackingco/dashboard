@@ -7,6 +7,7 @@ import { ExpressAdapter } from '@bull-board/express'
 import logger from './services/logger'
 import { errorHandler } from './middleware/error'
 import { rateLimiter } from './middleware/rateLimiter'
+import { initializeHiveMind } from './services/claude-flow/init'
 
 // Routes
 import swarmRouter from './routes/swarms'
@@ -52,7 +53,21 @@ app.use('/admin/queues', serverAdapter.getRouter())
 // Error handling
 app.use(errorHandler)
 
-// Start server
-app.listen(PORT, () => {
-  logger.info(`Swarm Manager API running on port ${PORT}`)
-})
+// Initialize Hive Mind before starting server
+async function startServer() {
+  try {
+    // Initialize Claude Flow Hive Mind
+    await initializeHiveMind()
+    
+    // Start server
+    app.listen(PORT, () => {
+      logger.info(`Swarm Manager API running on port ${PORT}`)
+      logger.info('🐝 Claude Flow Hive Mind integration active')
+    })
+  } catch (error) {
+    logger.error('Failed to start server:', error)
+    process.exit(1)
+  }
+}
+
+startServer()

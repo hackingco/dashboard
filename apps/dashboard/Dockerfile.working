@@ -1,0 +1,58 @@
+FROM node:18-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Copy package files
+COPY package.json pnpm-lock.yaml* ./
+RUN corepack enable pnpm && pnpm install --frozen-lockfile --ignore-scripts || pnpm install --no-frozen-lockfile --ignore-scripts
+
+# Create shared package structure for deps stage
+RUN mkdir -p node_modules/@swarm/types node_modules/@swarm/utils node_modules/@swarm/supabase
+
+# Copy built shared packages 
+COPY ../../shared/types/dist ./node_modules/@swarm/types/dist
+COPY ../../shared/types/package.json ./node_modules/@swarm/types/package.json
+
+COPY ../../shared/utils/dist ./node_modules/@swarm/utils/dist  
+COPY ../../shared/utils/package.json ./node_modules/@swarm/utils/package.json
+
+COPY ../../shared/supabase/dist ./node_modules/@swarm/supabase/dist
+COPY ../../shared/supabase/package.json ./node_modules/@swarm/supabase/package.json
+
+# Create proper index.js files for shared packages
+RUN echo 'module.exports = require("./dist/index.js");' > node_modules/@swarm/types/index.js
+RUN echo 'module.exports = require("./dist/index.js");' > node_modules/@swarm/utils/index.js  
+RUN echo 'module.exports = require("./dist/index.js");' > node_modules/@swarm/supabase/index.js
+
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+RUN corepack enable pnpm && pnpm build
+
+# Production image, copy all the files and run next
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy built application
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+USER nextjs
+
+EXPOSE 3000
+ENV PORT 3000
+
+CMD ["npm", "start"]

@@ -12,12 +12,16 @@ import { LogViewer } from '@/components/observability/LogViewer';
 import { TrustGraph } from '@/components/observability/TrustGraph';
 import { LangfuseTraces } from '@/components/observability/LangfuseTraces';
 import { SwarmStatusDisplay } from '@/components/SwarmStatusDisplay';
+import { SwarmStatusRealtime } from '@/components/SwarmStatusRealtime';
+import { ObservabilityDashboard } from '@/components/ObservabilityDashboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { SwarmLaunchForm } from '@/components/SwarmLaunchForm';
-import { RefreshCw, Plus, Activity, Network, Terminal, BarChart3, Rocket, Eye, GitBranch, Zap } from 'lucide-react';
+import { RefreshCw, Plus, Activity, Network, Terminal, BarChart3, Rocket, Eye, GitBranch, Zap, Brain } from 'lucide-react';
+import { supabase, swarmOperations } from '@/lib/supabase-client';
+import type { Database } from '@swarm/supabase';
 
 // Mock data generators
 const generateMockNodes = () => [
@@ -112,6 +116,8 @@ const generateMockLogs = () => {
   return logs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 };
 
+type Swarm = Database['public']['Tables']['swarms']['Row'];
+
 export default function DashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLaunchDialogOpen, setIsLaunchDialogOpen] = useState(false);
@@ -121,6 +127,8 @@ export default function DashboardPage() {
   const [timelineEvents, setTimelineEvents] = useState(generateMockTimelineEvents());
   const [metrics, setMetrics] = useState(generateMockMetrics());
   const [logs, setLogs] = useState(generateMockLogs());
+  const [swarms, setSwarms] = useState<Swarm[]>([]);
+  const [selectedSwarmId, setSelectedSwarmId] = useState<string | null>(null);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -175,8 +183,30 @@ export default function DashboardPage() {
     }
   };
 
-  // Simulate real-time updates
+  // Fetch real swarms
+  const fetchSwarms = async () => {
+    try {
+      const swarmsList = await swarmOperations.list();
+      setSwarms(swarmsList);
+      if (swarmsList.length > 0 && !selectedSwarmId) {
+        setSelectedSwarmId(swarmsList[0].id);
+      }
+    } catch (error) {
+      console.error('Error fetching swarms:', error);
+    }
+  };
+
+  // Initial load and real-time subscriptions
   useEffect(() => {
+    // Fetch swarms on mount
+    fetchSwarms();
+
+    // Subscribe to swarm changes
+    const subscription = swarmOperations.subscribe((payload) => {
+      fetchSwarms(); // Refresh when any swarm changes
+    });
+
+    // Simulate metric updates for demo
     const interval = setInterval(() => {
       // Add new log entries
       setLogs(prev => [...prev, ...generateMockLogs().slice(0, 1)].slice(-100));
@@ -199,7 +229,10 @@ export default function DashboardPage() {
       }));
     }, 5000);
 
-    return () => clearInterval(interval);
+    return () => {
+      subscription.unsubscribe();
+      clearInterval(interval);
+    };
   }, []);
 
   return (
@@ -250,8 +283,8 @@ export default function DashboardPage() {
               <Rocket className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">2</div>
-              <p className="text-xs text-muted-foreground">+1 from last hour</p>
+              <div className="text-2xl font-bold">{swarms.filter(s => s.status === 'running').length}</div>
+              <p className="text-xs text-muted-foreground">{swarms.length} total swarms</p>
             </CardContent>
           </Card>
           
@@ -261,8 +294,8 @@ export default function DashboardPage() {
               <Activity className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">12</div>
-              <p className="text-xs text-muted-foreground">85% utilization</p>
+              <div className="text-2xl font-bold">{swarms.reduce((acc, s) => acc + s.worker_count, 0)}</div>
+              <p className="text-xs text-muted-foreground">Across all swarms</p>
             </CardContent>
           </Card>
 
@@ -272,8 +305,10 @@ export default function DashboardPage() {
               <BarChart3 className="h-4 w-4 text-orange-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">1,284</div>
-              <p className="text-xs text-muted-foreground">+20.1% from yesterday</p>
+              <div className="text-2xl font-bold">
+                {swarms.reduce((acc, s) => acc + ((s.metrics as any)?.tasks_completed || 0), 0)}
+              </div>
+              <p className="text-xs text-muted-foreground">Total completed</p>
             </CardContent>
           </Card>
 
@@ -283,8 +318,16 @@ export default function DashboardPage() {
               <Eye className="h-4 w-4 text-purple-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">98.2%</div>
-              <p className="text-xs text-muted-foreground">+0.5% from last week</p>
+              <div className="text-2xl font-bold">
+                {swarms.length > 0 ? (
+                  (swarms.reduce((acc, s) => {
+                    const completed = (s.metrics as any)?.tasks_completed || 0;
+                    const failed = (s.metrics as any)?.tasks_failed || 0;
+                    return acc + (completed / (completed + failed || 1));
+                  }, 0) / swarms.length * 100).toFixed(1)
+                ) : '0'}%
+              </div>
+              <p className="text-xs text-muted-foreground">Average across swarms</p>
             </CardContent>
           </Card>
         </div>
@@ -360,15 +403,17 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="status" className="space-y-6">
-            <SwarmStatusDisplay 
-              swarmId="primary-swarm"
-              autoRefresh={true}
-              refreshInterval={3000}
-              onSwarmAction={(action, swarmId) => {
-                console.log(`${action} action triggered for swarm: ${swarmId}`);
-                // In production, this would call the API
-              }}
-            />
+            {selectedSwarmId ? (
+              <SwarmStatusRealtime swarmId={selectedSwarmId} />
+            ) : (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center h-64 text-gray-500">
+                  <Rocket className="w-12 h-12 mb-4 text-gray-300" />
+                  <p className="text-lg font-medium">No swarm selected</p>
+                  <p className="text-sm mt-2">Create a swarm to see real-time status</p>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="topology" className="space-y-6">
@@ -392,16 +437,7 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="observability" className="space-y-6">
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <TrustGraph 
-                onRefresh={() => console.log('Refreshing TrustGraph data...')}
-                onNodeClick={(node) => console.log('Node clicked:', node)}
-              />
-              <LangfuseTraces 
-                sessionId="primary-session"
-                onTraceSelect={(trace) => console.log('Trace selected:', trace)}
-              />
-            </div>
+            <ObservabilityDashboard />
           </TabsContent>
 
           <TabsContent value="logs" className="space-y-6">

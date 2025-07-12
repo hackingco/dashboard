@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
+import { HiveService, AgentService } from '../services/claude-flow';
 
 const router = Router();
+const hiveService = HiveService.getInstance();
+const agentService = AgentService.getInstance();
 
 // Enhanced Swarm Schema with detailed metadata
 const SwarmSchema = z.object({
@@ -188,22 +191,39 @@ router.get('/tree', (req, res) => {
 });
 
 // POST /enhanced-swarms - Create enhanced swarm
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const swarmData = SwarmSchema.parse(req.body);
     
+    // Create swarm using HiveService
+    const hiveSwarm = await hiveService.createSwarm({
+      name: swarmData.name,
+      purpose: swarmData.purpose,
+      topology: (swarmData.configuration?.resources?.cpu?.includes('mesh') ? 'mesh' : 'hierarchical') as any,
+      maxAgents: swarmData.configuration?.maxWorkers || 10,
+      strategy: swarmData.configuration?.autoScale ? 'adaptive' : 'balanced',
+      enableMemory: true,
+      enableNeural: true
+    });
+    
+    // Spawn initial agents
+    for (const agentData of swarmData.agents) {
+      await hiveService.spawnAgent(hiveSwarm.id, agentData.role, agentData.name);
+    }
+    
+    // Convert to API format
     const swarm = {
-      id: uuidv4(),
+      id: hiveSwarm.id,
       ...swarmData,
-      status: 'initializing',
-      agents: swarmData.agents.map(agent => ({
+      status: hiveSwarm.status,
+      agents: hiveSwarm.agents.map(agent => ({
         ...agent,
-        id: agent.id || uuidv4(),
-        status: agent.status || 'idle',
-        lastActivity: new Date().toISOString()
+        role: agent.type,
+        tasks: [],
+        lastActivity: agent.metadata?.spawnedAt || hiveSwarm.createdAt
       })),
-      createdAt: new Date().toISOString(),
-      lastUpdated: new Date().toISOString(),
+      createdAt: hiveSwarm.createdAt,
+      lastUpdated: hiveSwarm.lastUpdated,
       metrics: {
         tasksCompleted: 0,
         tasksActive: 0,
@@ -217,7 +237,8 @@ router.post('/', (req, res) => {
     
     res.status(201).json(swarm);
   } catch (error) {
-    res.status(400).json({ error: 'Invalid swarm configuration' });
+    console.error('Failed to create swarm:', error);
+    res.status(400).json({ error: 'Failed to create swarm: ' + (error as Error).message });
   }
 });
 
@@ -381,6 +402,128 @@ router.get('/stats', (req, res) => {
   };
   
   res.json(stats);
+});
+
+// POST /enhanced-swarms/:id/scale - Scale swarm agents
+router.post('/:id/scale', async (req, res) => {
+  try {
+    const { targetAgents } = req.body;
+    
+    if (!targetAgents || targetAgents < 1 || targetAgents > 100) {
+      return res.status(400).json({ error: 'Invalid target agent count' });
+    }
+    
+    const swarmIndex = swarms.findIndex(s => s.id === req.params.id);
+    if (swarmIndex === -1) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+    
+    // Scale using HiveService
+    await hiveService.scaleSwarm(req.params.id, targetAgents);
+    
+    // Get updated swarm data
+    const hiveSwarm = hiveService.getSwarm(req.params.id);
+    if (!hiveSwarm) {
+      return res.status(404).json({ error: 'Swarm not found in hive' });
+    }
+    
+    // Update local swarm data
+    swarms[swarmIndex].agents = hiveSwarm.agents.map(agent => ({
+      ...agent,
+      role: agent.type,
+      tasks: [],
+      lastActivity: agent.metadata?.spawnedAt || hiveSwarm.createdAt
+    }));
+    swarms[swarmIndex].status = hiveSwarm.status;
+    swarms[swarmIndex].lastUpdated = hiveSwarm.lastUpdated;
+    
+    res.json({
+      id: req.params.id,
+      status: hiveSwarm.status,
+      currentAgents: hiveSwarm.agents.length,
+      targetAgents
+    });
+  } catch (error) {
+    console.error('Failed to scale swarm:', error);
+    res.status(500).json({ error: 'Failed to scale swarm: ' + (error as Error).message });
+  }
+});
+
+// GET /enhanced-swarms/:id/intelligence - Get swarm intelligence data
+router.get('/:id/intelligence', async (req, res) => {
+  try {
+    const swarm = swarms.find(s => s.id === req.params.id);
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+    
+    const intelligence = await hiveService.getSwarmIntelligence(req.params.id);
+    res.json(intelligence);
+  } catch (error) {
+    console.error('Failed to get swarm intelligence:', error);
+    res.status(500).json({ error: 'Failed to get swarm intelligence: ' + (error as Error).message });
+  }
+});
+
+// POST /enhanced-swarms/:id/neural/train - Train neural patterns
+router.post('/:id/neural/train', async (req, res) => {
+  try {
+    const { iterations = 10 } = req.body;
+    
+    const swarm = swarms.find(s => s.id === req.params.id);
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+    
+    await hiveService.trainNeuralPatterns(req.params.id, iterations);
+    
+    res.json({
+      id: req.params.id,
+      training: 'completed',
+      iterations
+    });
+  } catch (error) {
+    console.error('Failed to train neural patterns:', error);
+    res.status(500).json({ error: 'Failed to train neural patterns: ' + (error as Error).message });
+  }
+});
+
+// POST /enhanced-swarms/:id/agents/:agentId/task - Assign task to agent
+router.post('/:id/agents/:agentId/task', async (req, res) => {
+  try {
+    const { description, priority = 'medium' } = req.body;
+    
+    if (!description) {
+      return res.status(400).json({ error: 'Task description is required' });
+    }
+    
+    const task = await agentService.assignTask(req.params.id, req.params.agentId, {
+      description,
+      priority,
+      status: 'pending'
+    });
+    
+    res.status(201).json(task);
+  } catch (error) {
+    console.error('Failed to assign task:', error);
+    res.status(500).json({ error: 'Failed to assign task: ' + (error as Error).message });
+  }
+});
+
+// GET /enhanced-swarms/:id/performance - Get swarm performance analysis
+router.get('/:id/performance', async (req, res) => {
+  try {
+    const swarm = swarms.find(s => s.id === req.params.id);
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+    
+    const performance = await agentService.analyzePerformance(req.params.id);
+    res.json(performance);
+  } catch (error) {
+    console.error('Failed to analyze performance:', error);
+    res.status(500).json({ error: 'Failed to analyze performance: ' + (error as Error).message });
+  }
 });
 
 export default router;

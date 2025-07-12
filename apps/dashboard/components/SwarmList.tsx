@@ -16,27 +16,10 @@ import {
   MoreVertical
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
+import { supabase, swarmOperations } from '@/lib/supabase-client';
+import type { Database } from '@swarm/supabase';
 
-interface Swarm {
-  id: string;
-  name: string;
-  purpose: string;
-  status: 'initializing' | 'running' | 'stopped' | 'error';
-  workerCount: number;
-  createdAt: string;
-  updatedAt: string;
-  config: {
-    maxWorkers: number;
-    taskTimeout: number;
-    retryLimit: number;
-  };
-  metrics: {
-    tasksCompleted: number;
-    tasksFailed: number;
-    averageTaskTime: number;
-  };
-  error?: string;
-}
+type Swarm = Database['public']['Tables']['swarms']['Row'];
 
 export function SwarmList() {
   const [swarms, setSwarms] = useState<Swarm[]>([]);
@@ -46,10 +29,8 @@ export function SwarmList() {
   const fetchSwarms = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/swarms');
-      if (!response.ok) throw new Error('Failed to fetch swarms');
-      const data = await response.json();
-      setSwarms(data);
+      const swarmsList = await swarmOperations.list();
+      setSwarms(swarmsList);
       setError(null);
     } catch (err) {
       setError('Failed to load swarms');
@@ -60,9 +41,20 @@ export function SwarmList() {
   };
 
   useEffect(() => {
+    // Initial fetch
     fetchSwarms();
-    const interval = setInterval(fetchSwarms, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
+
+    // Set up real-time subscription
+    const subscription = swarmOperations.subscribe((payload) => {
+      console.log('Swarm update:', payload);
+      // Refresh the swarms list when any swarm changes
+      fetchSwarms();
+    });
+
+    // Cleanup subscription on unmount
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleScale = async (swarmId: string, newCount: number) => {
@@ -105,14 +97,15 @@ export function SwarmList() {
     }
   };
 
-  const getStatusBadge = (status: Swarm['status']) => {
-    const variants = {
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, { color: string; text: string }> = {
       initializing: { color: 'bg-yellow-500', text: 'Initializing' },
+      creating: { color: 'bg-yellow-500', text: 'Creating' },
       running: { color: 'bg-green-500', text: 'Running' },
       stopped: { color: 'bg-gray-500', text: 'Stopped' },
       error: { color: 'bg-red-500', text: 'Error' },
     };
-    const variant = variants[status];
+    const variant = variants[status] || { color: 'bg-gray-500', text: status };
     return (
       <Badge className={`${variant.color} text-white`}>
         {variant.text}
@@ -181,7 +174,7 @@ export function SwarmList() {
                   Workers
                 </p>
                 <p className="text-lg font-semibold">
-                  {swarm.workerCount} / {swarm.config.maxWorkers}
+                  {swarm.worker_count} / {(swarm.config as any)?.maxWorkers || 10}
                 </p>
               </div>
               <div className="space-y-1">
@@ -189,19 +182,19 @@ export function SwarmList() {
                   <Activity className="w-3 h-3" />
                   Tasks Completed
                 </p>
-                <p className="text-lg font-semibold">{swarm.metrics.tasksCompleted}</p>
+                <p className="text-lg font-semibold">{(swarm.metrics as any)?.tasks_completed || 0}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   Avg Task Time
                 </p>
-                <p className="text-lg font-semibold">{swarm.metrics.averageTaskTime}ms</p>
+                <p className="text-lg font-semibold">{(swarm.metrics as any)?.average_task_duration || 0}ms</p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">Uptime</p>
                 <p className="text-lg font-semibold">
-                  {formatDistanceToNow(new Date(swarm.createdAt), { addSuffix: false })}
+                  {formatDistanceToNow(new Date(swarm.created_at), { addSuffix: false })}
                 </p>
               </div>
             </div>
@@ -226,16 +219,16 @@ export function SwarmList() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleScale(swarm.id, swarm.workerCount + 1)}
-                    disabled={swarm.workerCount >= swarm.config.maxWorkers}
+                    onClick={() => handleScale(swarm.id, swarm.worker_count + 1)}
+                    disabled={swarm.worker_count >= ((swarm.config as any)?.maxWorkers || 10)}
                   >
                     Scale Up
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleScale(swarm.id, swarm.workerCount - 1)}
-                    disabled={swarm.workerCount <= 1}
+                    onClick={() => handleScale(swarm.id, swarm.worker_count - 1)}
+                    disabled={swarm.worker_count <= 1}
                   >
                     Scale Down
                   </Button>
@@ -252,7 +245,7 @@ export function SwarmList() {
               ) : null}
               
               <div className="ml-auto text-xs text-muted-foreground">
-                Updated {formatDistanceToNow(new Date(swarm.updatedAt), { addSuffix: true })}
+                Updated {formatDistanceToNow(new Date(swarm.updated_at), { addSuffix: true })}
               </div>
             </div>
           </CardContent>

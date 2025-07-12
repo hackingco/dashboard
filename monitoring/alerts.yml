@@ -1,0 +1,226 @@
+# Alert Rules for Swarm Management System
+# Configure with your monitoring system (Prometheus, Grafana, etc.)
+
+groups:
+  - name: service_health
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up{job=~"dashboard|manager|worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been down for more than 2 minutes"
+          
+      - alert: HighErrorRate
+        expr: |
+          rate(http_requests_total{status=~"5.."}[5m]) 
+          / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High error rate on {{ $labels.service }}"
+          description: "Error rate is {{ $value | humanizePercentage }} for the last 5 minutes"
+          
+      - alert: SlowResponseTime
+        expr: |
+          histogram_quantile(0.95, 
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Slow response times on {{ $labels.service }}"
+          description: "95th percentile response time is {{ $value }}s"
+
+  - name: resource_utilization
+    interval: 30s
+    rules:
+      - alert: HighCPUUsage
+        expr: |
+          rate(process_cpu_seconds_total[5m]) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}%"
+          
+      - alert: HighMemoryUsage
+        expr: |
+          process_resident_memory_bytes 
+          / node_memory_MemTotal_bytes * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value }}%"
+          
+      - alert: DiskSpaceLow
+        expr: |
+          node_filesystem_avail_bytes{mountpoint="/"} 
+          / node_filesystem_size_bytes{mountpoint="/"} < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"
+
+  - name: fly_machines
+    interval: 1m
+    rules:
+      - alert: LowMachineAvailability
+        expr: |
+          sum(fly_machine_status{state="started"}) 
+          / sum(fly_machine_status) < 0.5
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Low machine availability in swarm"
+          description: "Only {{ $value | humanizePercentage }} of machines are running"
+          
+      - alert: MachineCreationFailures
+        expr: |
+          rate(fly_machine_operations_total{operation="create",status="failed"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High machine creation failure rate"
+          description: "{{ $value }} machine creations per second are failing"
+          
+      - alert: SwarmScalingIssue
+        expr: |
+          abs(swarm_desired_count - swarm_actual_count) > 2
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Swarm scaling mismatch"
+          description: "Desired: {{ $labels.desired }}, Actual: {{ $labels.actual }}"
+
+  - name: database_health
+    interval: 30s
+    rules:
+      - alert: DatabaseConnectionPoolExhausted
+        expr: |
+          pg_stat_database_numbackends 
+          / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Database connection pool near limit"
+          description: "{{ $value | humanizePercentage }} of connections in use"
+          
+      - alert: SlowDatabaseQueries
+        expr: |
+          rate(pg_stat_statements_mean_time_seconds[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Slow database queries detected"
+          description: "Average query time is {{ $value }}s"
+          
+      - alert: DatabaseReplicationLag
+        expr: |
+          pg_replication_lag_seconds > 10
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High database replication lag"
+          description: "Replication lag is {{ $value }}s"
+
+  - name: redis_health
+    interval: 30s
+    rules:
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been unavailable for more than 2 minutes"
+          
+      - alert: RedisMemoryHigh
+        expr: |
+          redis_memory_used_bytes 
+          / redis_memory_max_bytes > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis is using {{ $value | humanizePercentage }} of available memory"
+          
+      - alert: RedisSlowCommands
+        expr: |
+          rate(redis_slowlog_length[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Redis experiencing slow commands"
+          description: "{{ $value }} slow commands per minute"
+
+  - name: business_metrics
+    interval: 1m
+    rules:
+      - alert: NoActiveSwarms
+        expr: active_swarms_total == 0
+        for: 15m
+        labels:
+          severity: info
+          team: business
+        annotations:
+          summary: "No active swarms"
+          description: "No swarms have been active for 15 minutes"
+          
+      - alert: HighSwarmChurn
+        expr: |
+          rate(swarm_lifecycle_events_total{event="terminated"}[1h]) 
+          / rate(swarm_lifecycle_events_total{event="created"}[1h]) > 0.5
+        for: 30m
+        labels:
+          severity: warning
+          team: business
+        annotations:
+          summary: "High swarm termination rate"
+          description: "{{ $value | humanizePercentage }} of created swarms are being terminated"
+          
+      - alert: APIUsageSpike
+        expr: |
+          rate(api_requests_total[5m]) 
+          > avg_over_time(rate(api_requests_total[5m])[1h:5m]) * 3
+        for: 10m
+        labels:
+          severity: info
+          team: business
+        annotations:
+          summary: "API usage spike detected"
+          description: "API requests are 3x higher than hourly average"

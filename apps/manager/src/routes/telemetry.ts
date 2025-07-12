@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { telemetryService } from '../services/telemetry.service';
+import { trustGraphService } from '../services/trustgraph';
+import { langfuseService } from '../services/langfuse';
 import logger from '../services/logger';
+import { TraceEndpoint } from '../services/langfuse/decorators';
 
 const router = Router();
 
@@ -84,85 +87,32 @@ router.post('/metrics', async (req, res) => {
 });
 
 /**
- * GET /telemetry/spans
- * Get Langfuse spans (mock data for now)
+ * GET /telemetry/langfuse/traces
+ * Get Langfuse traces
  */
-router.get('/spans', async (req, res) => {
+router.get('/langfuse/traces', async (req, res) => {
   try {
-    const { swarmId, status, name, timeRange = '1h' } = req.query;
+    const { model, startTime, endTime, minCost, maxCost } = req.query;
 
-    // In production, this would fetch from the telemetry service's active spans
-    // For now, return information about spans that would be sent to Langfuse
-    
-    const timeRangeMs = {
-      '1h': 60 * 60 * 1000,
-      '6h': 6 * 60 * 60 * 1000,
-      '24h': 24 * 60 * 60 * 1000,
-      '7d': 7 * 24 * 60 * 60 * 1000,
-    }[timeRange as string] || 60 * 60 * 1000;
+    const filters: any = {};
+    if (model) filters.model = model as string;
+    if (startTime) filters.startTime = new Date(startTime as string);
+    if (endTime) filters.endTime = new Date(endTime as string);
+    if (minCost) filters.minCost = parseFloat(minCost as string);
+    if (maxCost) filters.maxCost = parseFloat(maxCost as string);
 
-    // Generate mock span data that would represent what's sent to Langfuse
-    const spans = Array.from({ length: 25 }, (_, i) => {
-      const startTime = new Date(Date.now() - Math.random() * timeRangeMs);
-      const duration = Math.floor(Math.random() * 2000) + 100;
-      const spanStatus = ['success', 'success', 'success', 'error', 'pending'][Math.floor(Math.random() * 5)];
-      
-      return {
-        id: `span-${i + 1}`,
-        name: [
-          'SwarmCreation',
-          'TaskExecution',
-          'WorkerAssignment', 
-          'ApiRequest',
-          'DatabaseQuery'
-        ][Math.floor(Math.random() * 5)],
-        startTime,
-        endTime: spanStatus === 'pending' ? undefined : new Date(startTime.getTime() + duration),
-        duration: spanStatus === 'pending' ? undefined : duration,
-        status: spanStatus,
-        input: {
-          swarmId: swarmId || `swarm-${Math.floor(Math.random() * 3) + 1}`,
-          taskType: 'automated',
-        },
-        output: spanStatus === 'pending' ? undefined : {
-          result: spanStatus,
-          metrics: { cpu: Math.random() * 100 }
-        },
-        metadata: {
-          environment: 'production',
-          version: '1.0.0',
-        }
-      };
-    });
+    const traces = langfuseService.getTraces(filters);
+    const metrics = langfuseService.getMetrics(
+      startTime && endTime ? {
+        start: new Date(startTime as string),
+        end: new Date(endTime as string)
+      } : undefined
+    );
 
-    // Apply filters
-    let filteredSpans = spans;
-    if (swarmId) {
-      filteredSpans = filteredSpans.filter(s => s.input.swarmId === swarmId);
-    }
-    if (status) {
-      filteredSpans = filteredSpans.filter(s => s.status === status);
-    }
-    if (name) {
-      filteredSpans = filteredSpans.filter(s => 
-        s.name.toLowerCase().includes((name as string).toLowerCase())
-      );
-    }
-
-    res.json({
-      spans: filteredSpans,
-      summary: {
-        total: filteredSpans.length,
-        success: filteredSpans.filter(s => s.status === 'success').length,
-        error: filteredSpans.filter(s => s.status === 'error').length,
-        pending: filteredSpans.filter(s => s.status === 'pending').length,
-        avgDuration: filteredSpans.filter(s => s.duration).reduce((sum, s) => sum + (s.duration || 0), 0) / 
-                    filteredSpans.filter(s => s.duration).length || 0,
-      }
-    });
+    res.json({ traces, metrics });
   } catch (error) {
-    logger.error('Failed to get telemetry spans', { error });
-    res.status(500).json({ error: 'Failed to get telemetry spans' });
+    logger.error('Failed to get Langfuse traces', { error });
+    res.status(500).json({ error: 'Failed to get Langfuse traces' });
   }
 });
 
@@ -174,39 +124,30 @@ router.get('/trustgraph/nodes', async (req, res) => {
   try {
     const { swarmId, type } = req.query;
 
-    // Mock TrustGraph nodes - in production would come from actual TrustGraph API
-    const nodeTypes = ['swarm', 'worker', 'task', 'manager', 'database'];
-    const nodes = Array.from({ length: 15 }, (_, i) => ({
-      id: `node-${i + 1}`,
-      type: nodeTypes[Math.floor(Math.random() * nodeTypes.length)],
-      label: `Node ${i + 1}`,
-      metadata: {
-        createdAt: new Date(Date.now() - Math.random() * 86400000).toISOString(),
-        status: Math.random() > 0.1 ? 'active' : 'inactive',
-        swarmId: swarmId || `swarm-${Math.floor(Math.random() * 3) + 1}`,
-      },
-    }));
+    // Get actual nodes from TrustGraph service
+    const graphData = trustGraphService.exportGraph();
+    let nodes = graphData.nodes;
 
     // Apply filters
-    let filteredNodes = nodes;
     if (swarmId) {
-      filteredNodes = filteredNodes.filter(n => n.metadata.swarmId === swarmId);
+      nodes = nodes.filter(n => n.metadata?.swarmId === swarmId);
     }
     if (type) {
-      filteredNodes = filteredNodes.filter(n => n.type === type);
+      nodes = nodes.filter(n => n.type === type);
     }
 
-    res.json({
-      nodes: filteredNodes,
-      summary: {
-        total: filteredNodes.length,
-        active: filteredNodes.filter(n => n.metadata.status === 'active').length,
-        byType: nodeTypes.reduce((acc, t) => {
-          acc[t] = filteredNodes.filter(n => n.type === t).length;
-          return acc;
-        }, {} as Record<string, number>),
-      }
-    });
+    // Calculate summary
+    const nodeTypes = ['swarm', 'worker', 'task', 'api', 'dependency'];
+    const summary = {
+      total: nodes.length,
+      active: nodes.filter(n => n.metadata?.status === 'active').length,
+      byType: nodeTypes.reduce((acc, t) => {
+        acc[t] = nodes.filter(n => n.type === t).length;
+        return acc;
+      }, {} as Record<string, number>),
+    };
+
+    res.json({ nodes, summary });
   } catch (error) {
     logger.error('Failed to get TrustGraph nodes', { error });
     res.status(500).json({ error: 'Failed to get TrustGraph nodes' });
@@ -221,43 +162,79 @@ router.get('/trustgraph/edges', async (req, res) => {
   try {
     const { swarmId, label } = req.query;
 
-    // Mock TrustGraph edges
-    const edgeLabels = ['deployed', 'assigned', 'executed', 'linked', 'depends_on', 'manages'];
-    const edges = Array.from({ length: 20 }, (_, i) => ({
-      source: `node-${Math.floor(Math.random() * 15) + 1}`,
-      target: `node-${Math.floor(Math.random() * 15) + 1}`,
-      label: edgeLabels[Math.floor(Math.random() * edgeLabels.length)],
-      metadata: {
-        createdAt: new Date(Date.now() - Math.random() * 86400000).toISOString(),
-        strength: Math.random(),
-        verified: Math.random() > 0.2,
-        swarmId: swarmId || `swarm-${Math.floor(Math.random() * 3) + 1}`,
-      },
-    }));
+    // Get actual edges from TrustGraph service
+    const graphData = trustGraphService.exportGraph();
+    let edges = graphData.edges;
 
     // Apply filters
-    let filteredEdges = edges;
     if (swarmId) {
-      filteredEdges = filteredEdges.filter(e => e.metadata.swarmId === swarmId);
+      edges = edges.filter(e => e.metadata?.swarmId === swarmId);
     }
     if (label) {
-      filteredEdges = filteredEdges.filter(e => e.label === label);
+      edges = edges.filter(e => e.label === label);
     }
 
-    res.json({
-      edges: filteredEdges,
-      summary: {
-        total: filteredEdges.length,
-        verified: filteredEdges.filter(e => e.metadata.verified).length,
-        byLabel: edgeLabels.reduce((acc, l) => {
-          acc[l] = filteredEdges.filter(e => e.label === l).length;
-          return acc;
-        }, {} as Record<string, number>),
-      }
-    });
+    // Calculate summary
+    const edgeTypes = ['depends_on', 'executes', 'triggers', 'creates', 'calls'];
+    const summary = {
+      total: edges.length,
+      verified: edges.filter(e => e.metadata?.verified).length,
+      byLabel: edges.reduce((acc, e) => {
+        acc[e.label] = (acc[e.label] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+      byType: edgeTypes.reduce((acc, t) => {
+        acc[t] = edges.filter(e => e.type === t).length;
+        return acc;
+      }, {} as Record<string, number>),
+    };
+
+    res.json({ edges, summary });
   } catch (error) {
     logger.error('Failed to get TrustGraph edges', { error });
     res.status(500).json({ error: 'Failed to get TrustGraph edges' });
+  }
+});
+
+/**
+ * GET /telemetry/trustgraph/dag
+ * Get TrustGraph DAG analysis
+ */
+router.get('/trustgraph/dag', async (req, res) => {
+  try {
+    const analysis = trustGraphService.analyzeDAG();
+    res.json(analysis);
+  } catch (error) {
+    logger.error('Failed to get DAG analysis', { error });
+    res.status(500).json({ error: 'Failed to get DAG analysis' });
+  }
+});
+
+/**
+ * GET /telemetry/visualization
+ * Get visualization data for the Dashboard
+ */
+router.get('/visualization', async (req, res) => {
+  try {
+    const graphData = trustGraphService.getVisualizationData();
+    const langfuseMetrics = langfuseService.getMetrics();
+    const performanceMetrics = telemetryService.getMetrics();
+
+    res.json({
+      graph: graphData,
+      langfuse: langfuseMetrics,
+      performance: {
+        metrics: performanceMetrics,
+        summary: performanceMetrics.length > 0 ? {
+          spanDuration: telemetryService.getMetricSummary('span.duration'),
+          taskCompletion: telemetryService.getMetricSummary('task.completion'),
+          swarmOperations: telemetryService.getMetricSummary('swarm.operation')
+        } : null
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to get visualization data', { error });
+    res.status(500).json({ error: 'Failed to get visualization data' });
   }
 });
 
@@ -267,25 +244,27 @@ router.get('/trustgraph/edges', async (req, res) => {
  */
 router.get('/status', async (req, res) => {
   try {
-    // Get current telemetry configuration and status
+    const langfuseEnabled = langfuseService.isEnabled();
+    const graphData = trustGraphService.exportGraph();
+    
     res.json({
       status: 'active',
       langfuse: {
-        enabled: process.env.LANGFUSE_SECRET_KEY ? true : false,
+        enabled: langfuseEnabled,
         host: process.env.LANGFUSE_HOST || 'https://cloud.langfuse.com',
-        queueSize: Math.floor(Math.random() * 10), // Mock queue size
-        lastFlush: new Date().toISOString(),
+        tracesCount: langfuseService.getTraces().length,
+        metrics: langfuseEnabled ? langfuseService.getMetrics() : null,
       },
       trustGraph: {
-        enabled: process.env.TRUSTGRAPH_API_KEY ? true : false,
+        enabled: !!process.env.TRUSTGRAPH_API_KEY,
         host: process.env.TRUSTGRAPH_API_URL || 'https://api.trustgraph.ai',
-        nodeQueue: Math.floor(Math.random() * 5),
-        edgeQueue: Math.floor(Math.random() * 8),
-        lastFlush: new Date().toISOString(),
+        nodesCount: graphData.nodes.length,
+        edgesCount: graphData.edges.length,
+        dagAnalysis: trustGraphService.analyzeDAG(),
       },
       metrics: {
-        totalRecorded: Math.floor(Math.random() * 10000) + 1000,
-        uniqueNames: Math.floor(Math.random() * 50) + 20,
+        totalRecorded: telemetryService.getMetrics().length,
+        uniqueNames: new Set(telemetryService.getMetrics().map(m => m.name)).size,
         retentionPeriod: '7 days',
       },
       uptime: process.uptime(),

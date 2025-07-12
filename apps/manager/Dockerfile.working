@@ -1,0 +1,44 @@
+FROM node:18-alpine AS base
+
+WORKDIR /app
+
+# Copy package.json for dependencies
+COPY package.deploy.json ./package.json
+
+# Install production dependencies
+RUN npm install --production --legacy-peer-deps
+
+# Copy the built application and shared packages in one step to break cache
+COPY dist ./dist
+COPY ../../shared/types/dist ./shared-deps/types/dist
+COPY ../../shared/types/package.json ./shared-deps/types/package.json
+COPY ../../shared/utils/dist ./shared-deps/utils/dist  
+COPY ../../shared/utils/package.json ./shared-deps/utils/package.json
+COPY ../../shared/supabase/dist ./shared-deps/supabase/dist
+COPY ../../shared/supabase/package.json ./shared-deps/supabase/package.json
+
+# Create the node_modules/@swarm directory structure and move files
+RUN mkdir -p node_modules/@swarm/types node_modules/@swarm/utils node_modules/@swarm/supabase && \
+    cp -r shared-deps/types/dist node_modules/@swarm/types/ && \
+    cp shared-deps/types/package.json node_modules/@swarm/types/ && \
+    cp -r shared-deps/utils/dist node_modules/@swarm/utils/ && \
+    cp shared-deps/utils/package.json node_modules/@swarm/utils/ && \
+    cp -r shared-deps/supabase/dist node_modules/@swarm/supabase/ && \
+    cp shared-deps/supabase/package.json node_modules/@swarm/supabase/ && \
+    echo 'module.exports = require("./dist/index.js");' > node_modules/@swarm/types/index.js && \
+    echo 'module.exports = require("./dist/index.js");' > node_modules/@swarm/utils/index.js && \
+    echo 'module.exports = require("./dist/index.js");' > node_modules/@swarm/supabase/index.js && \
+    rm -rf shared-deps
+
+# Copy supabase dependencies if they exist
+RUN if [ -d "../../shared/supabase/node_modules/@supabase" ]; then cp -r ../../shared/supabase/node_modules/@supabase ./node_modules/; fi || true
+
+# Create non-root user and set permissions
+RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001 && \
+    chown -R nodejs:nodejs /app
+
+USER nodejs
+
+EXPOSE 8080
+
+CMD ["node", "dist/index.js"]

@@ -1,0 +1,33 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files - use the deploy version without workspace dependencies
+COPY package.deploy.json ./package.json
+
+# Install production dependencies only
+RUN npm install --production --legacy-peer-deps
+
+# Copy built JavaScript files
+COPY dist ./dist
+
+# Create directories and copy shared packages manually
+RUN mkdir -p node_modules/@swarm/types node_modules/@swarm/utils node_modules/@swarm/supabase
+
+# Copy built shared packages
+COPY ../../shared/types/dist ./node_modules/@swarm/types/
+COPY ../../shared/utils/dist ./node_modules/@swarm/utils/  
+COPY ../../shared/supabase/dist ./node_modules/@swarm/supabase/
+
+# Create package.json files for each shared package so they can be resolved
+RUN echo '{"name":"@swarm/types","main":"index.js"}' > node_modules/@swarm/types/package.json
+RUN echo '{"name":"@swarm/utils","main":"index.js"}' > node_modules/@swarm/utils/package.json  
+RUN echo '{"name":"@swarm/supabase","main":"index.js"}' > node_modules/@swarm/supabase/package.json
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+USER nodejs
+
+EXPOSE 8080
+
+CMD ["node", "dist/index.js"]

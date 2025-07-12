@@ -1,6 +1,8 @@
 import logger from './logger';
 import { EventEmitter } from 'events';
 import { performance } from 'perf_hooks';
+import { trustGraphService } from './trustgraph';
+import { langfuseService } from './langfuse';
 
 interface LangfuseSpan {
   id: string;
@@ -38,282 +40,151 @@ interface TrustGraphEdge {
 }
 
 export class TelemetryService extends EventEmitter {
-  private langfuseEnabled: boolean;
-  private trustGraphEnabled: boolean;
-  private langfuseApiKey: string;
-  private trustGraphApiKey: string;
-  private activeSpans: Map<string, LangfuseSpan> = new Map();
-
-  private langfuseHost: string;
-  private langfusePublicKey: string;
-  private trustGraphHost: string;
   private metrics: Map<string, PerformanceMetric[]> = new Map();
-  private spanQueue: LangfuseSpan[] = [];
-  private nodeQueue: TrustGraphNode[] = [];
-  private edgeQueue: TrustGraphEdge[] = [];
-  private flushInterval: NodeJS.Timeout | null = null;
   private performanceMarks: Map<string, number> = new Map();
 
   constructor() {
     super();
-    this.langfuseApiKey = process.env.LANGFUSE_SECRET_KEY || '';
-    this.langfusePublicKey = process.env.LANGFUSE_PUBLIC_KEY || '';
-    this.langfuseHost = process.env.LANGFUSE_HOST || 'https://cloud.langfuse.com';
-    this.trustGraphApiKey = process.env.TRUSTGRAPH_API_KEY || '';
-    this.trustGraphHost = process.env.TRUSTGRAPH_API_URL || 'https://api.trustgraph.ai';
-    this.langfuseEnabled = !!this.langfuseApiKey;
-    this.trustGraphEnabled = !!this.trustGraphApiKey;
-
-    if (!this.langfuseEnabled) {
-      logger.info('Langfuse telemetry disabled - LANGFUSE_SECRET_KEY not set');
+    
+    if (!langfuseService.isEnabled()) {
+      logger.info('Langfuse telemetry disabled - API keys not configured');
     }
-    if (!this.trustGraphEnabled) {
-      logger.info('TrustGraph telemetry disabled - TRUSTGRAPH_API_KEY not set');
-    }
-
-    // Start flush interval for batched operations
-    if (this.langfuseEnabled || this.trustGraphEnabled) {
-      this.startFlushInterval();
-    }
+    
+    logger.info('Telemetry service initialized with TrustGraph and Langfuse integration');
   }
 
-  // Langfuse Methods
+  // Langfuse Methods (delegated to langfuseService)
   startSpan(spanId: string, name: string, input?: any, metadata?: Record<string, any>, parentId?: string): void {
-    if (!this.langfuseEnabled) return;
-
-    const span: LangfuseSpan = {
-      id: spanId,
-      name,
-      startTime: new Date(),
-      input,
-      metadata,
-      parentId,
-      status: 'pending',
-    };
-
+    langfuseService.startSpan(spanId, name, parentId, input, metadata);
+    
     // Mark performance start
     this.performanceMarks.set(spanId, performance.now());
-
-    this.activeSpans.set(spanId, span);
     logger.debug('Started Langfuse span', { spanId, name });
   }
 
   endSpan(spanId: string, output?: any, error?: any): void {
-    if (!this.langfuseEnabled) return;
-
-    const span = this.activeSpans.get(spanId);
-    if (!span) {
-      logger.warn('Attempted to end non-existent span', { spanId });
-      return;
-    }
-
-    span.endTime = new Date();
-    span.output = error || output;
-    span.status = error ? 'error' : 'success';
-
+    langfuseService.endSpan(spanId, output, error);
+    
     // Calculate duration using performance marks
     const startMark = this.performanceMarks.get(spanId);
     if (startMark) {
-      span.duration = performance.now() - startMark;
+      const duration = performance.now() - startMark;
       this.performanceMarks.delete(spanId);
-    } else {
-      span.duration = span.endTime.getTime() - span.startTime.getTime();
+      
+      // Emit performance metric
+      this.recordMetric('span.duration', duration, 'ms', {
+        span: spanId,
+        status: error ? 'error' : 'success',
+      });
     }
-
-    // Queue span for batch sending
-    this.spanQueue.push(span);
     
-    // Emit performance metric
-    this.recordMetric('span.duration', span.duration, 'ms', {
-      span: span.name,
-      status: span.status,
-    });
-    this.activeSpans.delete(spanId);
-    logger.debug('Ended Langfuse span', { spanId, duration: span.endTime.getTime() - span.startTime.getTime() });
+    logger.debug('Ended Langfuse span', { spanId });
   }
 
-  private async flushSpans(): Promise<void> {
-    if (this.spanQueue.length === 0) return;
-
-    const spans = [...this.spanQueue];
-    this.spanQueue = [];
-
-    try {
-      const response = await fetch(`${this.langfuseHost}/api/public/traces`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Langfuse-Public-Key': this.langfusePublicKey,
-          'X-Langfuse-Secret-Key': this.langfuseApiKey,
-        },
-        body: JSON.stringify({
-          batch: spans.map(span => ({
-            id: span.id,
-            traceId: span.parentId || span.id,
-            type: 'span',
-            name: span.name,
-            startTime: span.startTime.toISOString(),
-            endTime: span.endTime?.toISOString(),
-            input: span.input,
-            output: span.output,
-            metadata: span.metadata,
-            statusMessage: span.status,
-            parentObservationId: span.parentId,
-          })),
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Langfuse API error: ${response.status} - ${error}`);
-      }
-
-      logger.debug(`Flushed ${spans.length} spans to Langfuse`);
-    } catch (error) {
-      logger.error('Failed to flush spans to Langfuse', { error });
-      // Re-queue failed spans
-      this.spanQueue.unshift(...spans);
-    }
-  }
-
-  // TrustGraph Methods
+  // TrustGraph Methods (delegated to trustGraphService)
   async emitNode(node: TrustGraphNode): Promise<void> {
-    if (!this.trustGraphEnabled) return;
-
-    // Queue node for batch sending
-    this.nodeQueue.push(node);
-  }
-
-  private async flushNodes(): Promise<void> {
-    if (this.nodeQueue.length === 0) return;
-
-    const nodes = [...this.nodeQueue];
-    this.nodeQueue = [];
-
-    try {
-      const response = await fetch(`${this.trustGraphHost}/v1/nodes/batch`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.trustGraphApiKey}`,
-        },
-        body: JSON.stringify({ nodes }),
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`TrustGraph API error: ${response.status} - ${error}`);
-      }
-
-      logger.debug(`Flushed ${nodes.length} nodes to TrustGraph`);
-    } catch (error) {
-      logger.error('Failed to flush nodes to TrustGraph', { error });
-      // Re-queue failed nodes
-      this.nodeQueue.unshift(...nodes);
-    }
+    await trustGraphService.createNode(node);
   }
 
   async emitEdge(edge: TrustGraphEdge): Promise<void> {
-    if (!this.trustGraphEnabled) return;
-
-    // Queue edge for batch sending
-    this.edgeQueue.push(edge);
+    await trustGraphService.createEdge(edge);
   }
 
-  private async flushEdges(): Promise<void> {
-    if (this.edgeQueue.length === 0) return;
+  // Track task dependencies
+  async trackTaskDependency(taskId: string, dependsOn: string[]): Promise<void> {
+    await trustGraphService.trackTaskDependency(taskId, dependsOn);
+  }
 
-    const edges = [...this.edgeQueue];
-    this.edgeQueue = [];
-
-    try {
-      const response = await fetch(`${this.trustGraphHost}/v1/edges/batch`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.trustGraphApiKey}`,
-        },
-        body: JSON.stringify({ edges }),
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`TrustGraph API error: ${response.status} - ${error}`);
-      }
-
-      logger.debug(`Flushed ${edges.length} edges to TrustGraph`);
-    } catch (error) {
-      logger.error('Failed to flush edges to TrustGraph', { error });
-      // Re-queue failed edges
-      this.edgeQueue.unshift(...edges);
-    }
+  async updateTaskStatus(taskId: string, status: 'pending' | 'ready' | 'executing' | 'completed' | 'failed'): Promise<void> {
+    await trustGraphService.updateTaskStatus(taskId, status);
   }
 
   // Convenience method for swarm operations
   async trackSwarmCreation(swarmId: string, swarmName: string, config: any): Promise<void> {
-    const spanId = `swarm-create-${swarmId}`;
+    const traceId = langfuseService.startTrace('SwarmCreation', { swarmName, config });
     
-    // Start Langfuse span
-    this.startSpan(spanId, 'SwarmCreation', { swarmName, config });
-
     // Emit TrustGraph node
-    await this.emitNode({
+    await trustGraphService.createNode({
       id: swarmId,
       type: 'swarm',
       label: swarmName,
       metadata: { config, createdAt: new Date().toISOString() },
     });
+
+    // Track in both systems
+    this.emit('swarm:created', { swarmId, swarmName, config });
   }
 
   async trackSwarmDeployment(swarmId: string, machineId: string, success: boolean, error?: any): Promise<void> {
-    const spanId = `swarm-create-${swarmId}`;
+    const traceId = `swarm-create-${swarmId}`;
     
-    // End Langfuse span
-    this.endSpan(spanId, success ? { machineId, status: 'deployed' } : null, error);
+    // End Langfuse trace
+    if (success) {
+      await langfuseService.endTrace(traceId, { machineId, status: 'deployed' });
+    } else {
+      await langfuseService.trackError(traceId, error);
+      await langfuseService.endTrace(traceId, { status: 'failed' });
+    }
 
     // Emit TrustGraph edge
     if (success) {
-      await this.emitEdge({
+      await trustGraphService.createEdge({
         source: 'swarm-manager',
         target: swarmId,
         label: 'deployed',
+        type: 'creates',
         metadata: { machineId, deployedAt: new Date().toISOString() },
       });
     }
   }
 
   async trackWorkerAssignment(swarmId: string, workerId: string): Promise<void> {
-    await this.emitEdge({
+    await trustGraphService.createEdge({
       source: swarmId,
       target: workerId,
       label: 'assigned',
+      type: 'creates',
       metadata: { assignedAt: new Date().toISOString() },
+    });
+
+    // Also create worker node
+    await trustGraphService.createNode({
+      id: workerId,
+      type: 'worker',
+      label: `Worker ${workerId}`,
+      metadata: { swarmId, createdAt: new Date().toISOString() }
     });
   }
 
   async trackTaskExecution(taskId: string, workerId: string, input: any, output: any, duration: number): Promise<void> {
+    const traceId = langfuseService.startTrace('TaskExecution', { workerId, taskId });
     const spanId = `task-${taskId}`;
     
-    this.startSpan(spanId, 'TaskExecution', input, { workerId, taskId });
+    langfuseService.startSpan(spanId, 'TaskExecution', traceId, input);
     
-    // Simulate execution
-    setTimeout(() => {
-      this.endSpan(spanId, output);
-    }, 10);
+    // Track execution
+    langfuseService.endSpan(spanId, output);
+    await langfuseService.endTrace(traceId, { duration });
 
-    await this.emitNode({
+    // Create task node
+    await trustGraphService.createNode({
       id: taskId,
       type: 'task',
       label: `Task ${taskId}`,
       metadata: { workerId, duration, completedAt: new Date().toISOString() },
     });
 
-    await this.emitEdge({
+    // Create execution edge
+    await trustGraphService.createEdge({
       source: workerId,
       target: taskId,
       label: 'executed',
+      type: 'executes',
       metadata: { duration, completedAt: new Date().toISOString() },
     });
+
+    // Update task status
+    await trustGraphService.updateTaskStatus(taskId, 'completed');
   }
 
   // Performance metrics
@@ -388,33 +259,28 @@ export class TelemetryService extends EventEmitter {
     };
   }
 
-  // Batch flush operations
-  private startFlushInterval(): void {
-    this.flushInterval = setInterval(async () => {
-      await Promise.all([
-        this.flushSpans(),
-        this.flushNodes(),
-        this.flushEdges(),
-      ]).catch(error => {
-        logger.error('Error during telemetry flush', { error });
-      });
-    }, 5000); // Flush every 5 seconds
+  // Get DAG analysis from TrustGraph
+  getDAGAnalysis() {
+    return trustGraphService.analyzeDAG();
+  }
+
+  // Get visualization data
+  getVisualizationData() {
+    return trustGraphService.getVisualizationData();
+  }
+
+  // Get Langfuse metrics
+  getLangfuseMetrics(timeRange?: { start: Date; end: Date }) {
+    return langfuseService.getMetrics(timeRange);
   }
 
   // Cleanup
-  destroy(): void {
-    if (this.flushInterval) {
-      clearInterval(this.flushInterval);
-      this.flushInterval = null;
-    }
-
-    // Final flush
-    Promise.all([
-      this.flushSpans(),
-      this.flushNodes(),
-      this.flushEdges(),
+  async destroy(): Promise<void> {
+    await Promise.all([
+      trustGraphService.destroy(),
+      langfuseService.shutdown()
     ]).catch(error => {
-      logger.error('Error during final telemetry flush', { error });
+      logger.error('Error during telemetry service cleanup', { error });
     });
   }
 }
