@@ -84,9 +84,9 @@ router.post('/', async (req, res) => {
     }
 
     // Validate Fly API token is available
-    if (!process.env.FLY_API_TOKEN) {
+    if (!process.env.FLY_ACCESS_TOKEN && !process.env.FLY_API_TOKEN) {
       return res.status(500).json({ 
-        error: 'Server configuration error: FLY_API_TOKEN is not configured' 
+        error: 'Server configuration error: FLY_ACCESS_TOKEN/FLY_API_TOKEN is not configured' 
       });
     }
 
@@ -577,6 +577,271 @@ router.post('/:id/start', async (req, res) => {
   } catch (error) {
     logger.error('Failed to start swarm', { error });
     res.status(500).json({ error: 'Failed to start swarm' });
+  }
+});
+
+/**
+ * GET /swarms/:id/machines/:machineId/stats
+ * Get real-time stats for a specific machine
+ */
+router.get('/:id/machines/:machineId/stats', async (req, res) => {
+  try {
+    const swarm = await swarmOperations.get(req.params.id);
+    
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    if (!swarm.fly_app_name) {
+      return res.status(404).json({ error: 'Swarm has no Fly app associated' });
+    }
+
+    // Get machine stats
+    const stats = await flyService.getMachineStats(swarm.fly_app_name, req.params.machineId);
+    
+    res.json({
+      swarmId: swarm.id,
+      machineId: req.params.machineId,
+      stats,
+    });
+  } catch (error) {
+    logger.error('Failed to get machine stats', { error });
+    res.status(500).json({ error: 'Failed to get machine stats' });
+  }
+});
+
+/**
+ * PUT /swarms/:id/machines/:machineId/scale
+ * Scale a specific machine's resources
+ */
+router.put('/:id/machines/:machineId/scale', async (req, res) => {
+  try {
+    const swarm = await swarmOperations.get(req.params.id);
+    
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    if (!swarm.fly_app_name) {
+      return res.status(404).json({ error: 'Swarm has no Fly app associated' });
+    }
+
+    const { cpus, memory } = req.body;
+    
+    if ((!cpus && !memory) || (cpus && cpus < 1) || (memory && memory < 256)) {
+      return res.status(400).json({ 
+        error: 'Invalid scale parameters. CPUs must be >= 1, memory must be >= 256' 
+      });
+    }
+
+    // Scale the machine
+    const result = await flyService.scaleMachine(swarm.fly_app_name, req.params.machineId, { cpus, memory });
+    
+    // Update worker record if exists
+    const workers = await workerOperations.listBySwarm(swarm.id);
+    const worker = workers.find(w => w.machine_id === req.params.machineId);
+    if (worker) {
+      await workerOperations.update(worker.id, {
+        config: {
+          ...worker.config,
+          cpus: cpus || worker.config.cpus,
+          memory: memory || worker.config.memory,
+        },
+      });
+    }
+
+    // Log the scaling operation
+    await logOperations.create({
+      swarm_id: swarm.id,
+      level: 'info',
+      source: 'manager',
+      message: `Machine ${req.params.machineId} scaled`,
+      metadata: { machineId: req.params.machineId, cpus, memory },
+    });
+
+    res.json({ 
+      message: 'Machine scaled successfully',
+      machine: result,
+    });
+  } catch (error) {
+    logger.error('Failed to scale machine', { error });
+    res.status(500).json({ error: 'Failed to scale machine' });
+  }
+});
+
+/**
+ * POST /swarms/:id/machines/:machineId/restart
+ * Restart a specific machine
+ */
+router.post('/:id/machines/:machineId/restart', async (req, res) => {
+  try {
+    const swarm = await swarmOperations.get(req.params.id);
+    
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    if (!swarm.fly_app_name) {
+      return res.status(404).json({ error: 'Swarm has no Fly app associated' });
+    }
+
+    // Restart the machine
+    await flyService.restartMachine(swarm.fly_app_name, req.params.machineId);
+    
+    // Log the restart
+    await logOperations.create({
+      swarm_id: swarm.id,
+      level: 'info',
+      source: 'manager',
+      message: `Machine ${req.params.machineId} restarted`,
+      metadata: { machineId: req.params.machineId },
+    });
+
+    res.json({ 
+      message: 'Machine restarted successfully',
+      machineId: req.params.machineId,
+    });
+  } catch (error) {
+    logger.error('Failed to restart machine', { error });
+    res.status(500).json({ error: 'Failed to restart machine' });
+  }
+});
+
+/**
+ * POST /swarms/:id/machines/:machineId/stop
+ * Stop a specific machine
+ */
+router.post('/:id/machines/:machineId/stop', async (req, res) => {
+  try {
+    const swarm = await swarmOperations.get(req.params.id);
+    
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    if (!swarm.fly_app_name) {
+      return res.status(404).json({ error: 'Swarm has no Fly app associated' });
+    }
+
+    // Stop the machine
+    await flyService.stopMachine(swarm.fly_app_name, req.params.machineId);
+    
+    // Update worker status
+    const workers = await workerOperations.listBySwarm(swarm.id);
+    const worker = workers.find(w => w.machine_id === req.params.machineId);
+    if (worker) {
+      await workerOperations.update(worker.id, { status: 'stopped' });
+    }
+
+    // Log the stop
+    await logOperations.create({
+      swarm_id: swarm.id,
+      level: 'info',
+      source: 'manager',
+      message: `Machine ${req.params.machineId} stopped`,
+      metadata: { machineId: req.params.machineId },
+    });
+
+    res.json({ 
+      message: 'Machine stopped successfully',
+      machineId: req.params.machineId,
+    });
+  } catch (error) {
+    logger.error('Failed to stop machine', { error });
+    res.status(500).json({ error: 'Failed to stop machine' });
+  }
+});
+
+/**
+ * POST /swarms/:id/machines/:machineId/start
+ * Start a specific machine
+ */
+router.post('/:id/machines/:machineId/start', async (req, res) => {
+  try {
+    const swarm = await swarmOperations.get(req.params.id);
+    
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    if (!swarm.fly_app_name) {
+      return res.status(404).json({ error: 'Swarm has no Fly app associated' });
+    }
+
+    // Start the machine
+    await flyService.startMachine(swarm.fly_app_name, req.params.machineId);
+    
+    // Update worker status
+    const workers = await workerOperations.listBySwarm(swarm.id);
+    const worker = workers.find(w => w.machine_id === req.params.machineId);
+    if (worker) {
+      await workerOperations.update(worker.id, { status: 'active' });
+    }
+
+    // Log the start
+    await logOperations.create({
+      swarm_id: swarm.id,
+      level: 'info',
+      source: 'manager',
+      message: `Machine ${req.params.machineId} started`,
+      metadata: { machineId: req.params.machineId },
+    });
+
+    res.json({ 
+      message: 'Machine started successfully',
+      machineId: req.params.machineId,
+    });
+  } catch (error) {
+    logger.error('Failed to start machine', { error });
+    res.status(500).json({ error: 'Failed to start machine' });
+  }
+});
+
+/**
+ * DELETE /swarms/:id/machines/:machineId
+ * Destroy a specific machine
+ */
+router.delete('/:id/machines/:machineId', async (req, res) => {
+  try {
+    const swarm = await swarmOperations.get(req.params.id);
+    
+    if (!swarm) {
+      return res.status(404).json({ error: 'Swarm not found' });
+    }
+
+    if (!swarm.fly_app_name) {
+      return res.status(404).json({ error: 'Swarm has no Fly app associated' });
+    }
+
+    // Destroy the machine
+    await flyService.destroyMachine(swarm.fly_app_name, req.params.machineId);
+    
+    // Delete worker record
+    const workers = await workerOperations.listBySwarm(swarm.id);
+    const worker = workers.find(w => w.machine_id === req.params.machineId);
+    if (worker) {
+      await workerOperations.delete(worker.id);
+    }
+
+    // Update swarm worker count
+    const remainingWorkers = await workerOperations.listBySwarm(swarm.id);
+    await swarmOperations.update(swarm.id, { 
+      worker_count: remainingWorkers.length,
+    });
+
+    // Log the destruction
+    await logOperations.create({
+      swarm_id: swarm.id,
+      level: 'info',
+      source: 'manager',
+      message: `Machine ${req.params.machineId} destroyed`,
+      metadata: { machineId: req.params.machineId },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    logger.error('Failed to destroy machine', { error });
+    res.status(500).json({ error: 'Failed to destroy machine' });
   }
 });
 

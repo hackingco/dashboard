@@ -1,0 +1,201 @@
+version: '3.8'
+
+services:
+  # Redis for caching and pub/sub
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Manager API Service
+  manager:
+    build:
+      context: ./apps/manager
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+      - PORT=8080
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/swarm_dev}
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-in-production}
+      - FLY_API_TOKEN=${FLY_API_TOKEN}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+      - DASHBOARD_URL=http://localhost:3000
+    volumes:
+      - ./apps/manager:/app
+      - ./shared:/shared
+      - /app/node_modules
+      - /app/dist
+    networks:
+      - swarm-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: npm run dev
+
+  # Admin Dashboard
+  dashboard:
+    build:
+      context: ./admin-dashboard
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8080
+      - VITE_WS_URL=ws://localhost:8080
+    volumes:
+      - ./admin-dashboard:/app
+      - /app/node_modules
+      - /app/dist
+    networks:
+      - swarm-network
+    command: npm run dev
+
+  # Optional: PostgreSQL for local development (instead of Supabase)
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=swarm_dev
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Supabase Local Stack
+  supabase-db:
+    image: supabase/postgres:15.1.0.117
+    ports:
+      - "54322:5432"
+    environment:
+      - POSTGRES_PASSWORD=your-super-secret-and-long-postgres-password
+      - POSTGRES_DB=postgres
+    volumes:
+      - supabase-db-data:/var/lib/postgresql/data
+    networks:
+      - swarm-network
+    profiles:
+      - supabase
+
+  supabase-auth:
+    image: supabase/gotrue:v2.139.0
+    ports:
+      - "9999:9999"
+    environment:
+      - GOTRUE_API_HOST=0.0.0.0
+      - GOTRUE_API_PORT=9999
+      - API_EXTERNAL_URL=http://localhost:54321
+      - GOTRUE_DB_DRIVER=postgres
+      - GOTRUE_DB_DATABASE_URL=postgres://postgres:your-super-secret-and-long-postgres-password@supabase-db:5432/postgres?search_path=auth
+      - GOTRUE_SITE_URL=http://localhost:3000
+      - GOTRUE_URI_ALLOW_LIST=http://localhost:3000
+      - GOTRUE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
+      - GOTRUE_JWT_EXP=3600
+    depends_on:
+      - supabase-db
+    networks:
+      - swarm-network
+    profiles:
+      - supabase
+
+  supabase-rest:
+    image: postgrest/postgrest:v11.2.2
+    ports:
+      - "54321:3000"
+    environment:
+      - PGRST_DB_URI=postgres://postgres:your-super-secret-and-long-postgres-password@supabase-db:5432/postgres
+      - PGRST_DB_SCHEMAS=public,storage,graphql_public
+      - PGRST_DB_ANON_ROLE=anon
+      - PGRST_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
+      - PGRST_DB_USE_LEGACY_GUCS=false
+    depends_on:
+      - supabase-db
+    networks:
+      - swarm-network
+    profiles:
+      - supabase
+
+  supabase-realtime:
+    image: supabase/realtime:v2.25.50
+    ports:
+      - "54323:4000"
+    environment:
+      - DB_HOST=supabase-db
+      - DB_PORT=5432
+      - DB_NAME=postgres
+      - DB_USER=postgres
+      - DB_PASSWORD=your-super-secret-and-long-postgres-password
+      - REPLICATION_MODE=RLS
+      - REPLICATION_POLL_INTERVAL=100
+      - SECURE_CHANNELS=true
+      - SLOT_NAME=supabase_realtime_rls
+      - TEMPORARY_SLOT=true
+      - MAX_EVENTS_PER_SECOND=100
+    depends_on:
+      - supabase-db
+    networks:
+      - swarm-network
+    profiles:
+      - supabase
+
+  supabase-storage:
+    image: supabase/storage-api:v0.43.11
+    ports:
+      - "54324:5000"
+    environment:
+      - ANON_KEY=your-super-secret-jwt-token-with-at-least-32-characters-long
+      - SERVICE_KEY=your-super-secret-jwt-token-with-at-least-32-characters-long
+      - JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
+      - DATABASE_URL=postgres://postgres:your-super-secret-and-long-postgres-password@supabase-db:5432/postgres
+      - PGOPTIONS=-c search_path=storage,public
+      - FILE_SIZE_LIMIT=52428800
+      - STORAGE_BACKEND=file
+      - FILE_STORAGE_BACKEND_PATH=/var/lib/storage
+      - TENANT_ID=stub
+      - REGION=stub
+      - GLOBAL_S3_BUCKET=stub
+    volumes:
+      - supabase-storage-data:/var/lib/storage
+    depends_on:
+      - supabase-db
+    networks:
+      - swarm-network
+    profiles:
+      - supabase
+
+networks:
+  swarm-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:
+  supabase-db-data:
+  supabase-storage-data:

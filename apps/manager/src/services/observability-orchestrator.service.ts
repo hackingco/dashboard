@@ -81,7 +81,7 @@ export class ObservabilityOrchestrator extends EventEmitter {
   }
 
   async initialize(): Promise<void> {
-    if (this.isInitialized) {
+    if (this.orchestratorInitialized) {
       logger.warn('Observability orchestrator already initialized');
       return;
     }
@@ -367,7 +367,7 @@ export class ObservabilityOrchestrator extends EventEmitter {
   // Database Operations
   private async createObservabilityCorrelation(session: ObservabilitySession): Promise<void> {
     try {
-      const { error } = await this.supabaseRealtime.client
+      const { error } = await this.supabaseRealtime.getClient()
         .from('observability_correlations')
         .insert({
           correlation_id: session.correlation_id,
@@ -389,7 +389,7 @@ export class ObservabilityOrchestrator extends EventEmitter {
 
   private async updateObservabilityCorrelation(session: ObservabilitySession): Promise<void> {
     try {
-      const { error } = await this.supabaseRealtime.client
+      const { error } = await this.supabaseRealtime.getClient()
         .from('observability_correlations')
         .update({
           operation_status: session.status,
@@ -557,7 +557,7 @@ export class ObservabilityOrchestrator extends EventEmitter {
       sessions,
       trustgraph,
       machine_states: machineStates,
-      langfuseMetrics,
+      langfuse_metrics: langfuseMetrics,
       realtime_status: realtimeStatus
     };
   }
@@ -594,7 +594,7 @@ export class ObservabilityOrchestrator extends EventEmitter {
     this.realtimeSubscriptions.clear();
 
     this.removeAllListeners();
-    this.isInitialized = false;
+    this.orchestratorInitialized = false;
     
     logger.info('Observability orchestrator destroyed');
   }

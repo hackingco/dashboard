@@ -11,12 +11,33 @@
 
 ### Prerequisites
 ```bash
-# Ensure you're authenticated
+# 1. Set up Fly.io API token (required for API operations)
+./scripts/setup-fly-token.sh
+
+# 2. Ensure you're authenticated
 fly auth whoami
 # Should show: admin@hacking.co
 
 # If not authenticated:
 fly auth login
+```
+
+### Fly.io API Token Configuration
+
+The swarm manager now uses the Fly.io Machines API for real-time machine management. 
+You must configure the `FLY_ACCESS_TOKEN` environment variable:
+
+```bash
+# Option 1: Use the setup script (recommended)
+./scripts/setup-fly-token.sh
+
+# Option 2: Manual setup
+export FLY_ACCESS_TOKEN=$(fly auth token)
+echo "FLY_ACCESS_TOKEN=$FLY_ACCESS_TOKEN" >> .env
+echo "FLY_ACCESS_TOKEN=$FLY_ACCESS_TOKEN" >> apps/manager/.env
+
+# Option 3: Set as Fly secret (for production)
+fly secrets set FLY_ACCESS_TOKEN=$(fly auth token) --app swarm-manager
 ```
 
 ### Deploy Manager API
@@ -68,8 +89,24 @@ FLY_ACCESS_TOKEN=$(fly auth token) fly deploy --app swarm-worker --dockerfile Do
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `REDIS_URL`
-- `FLY_API_TOKEN`
+- `FLY_ACCESS_TOKEN` (or `FLY_API_TOKEN` for backward compatibility)
 - `JWT_SECRET`
+
+### Enhanced Fly.io API Features
+
+The updated FlyService now provides real-time machine management:
+
+1. **Machine Launch**: Direct API calls to create machines
+2. **Machine Scaling**: Scale individual machines (CPU/memory)
+3. **Health Monitoring**: Automatic health check polling
+4. **Machine Stats**: Real-time CPU, memory, disk, and network metrics
+5. **Machine Control**: Start, stop, restart, and destroy machines
+
+Example API endpoints:
+- `POST /swarms/:id/machines` - Create new machine
+- `PUT /swarms/:id/machines/:machineId/scale` - Scale machine resources
+- `GET /swarms/:id/machines/:machineId/stats` - Get real-time stats
+- `POST /swarms/:id/machines/:machineId/restart` - Restart machine
 
 ### swarm-admin
 - `NEXT_PUBLIC_API_URL=https://swarm-manager.fly.dev`

@@ -14,6 +14,8 @@ import { rateLimiter } from './middleware/rateLimiter'
 import { initializeHiveMind } from './services/claude-flow/init'
 import { WebSocketService } from './services/websocket.service'
 import { FlyService } from './services/fly.service'
+import { supabaseRealtimeService } from './services/supabase-realtime.service'
+import { observabilityOrchestrator } from './services/observability-orchestrator.service'
 
 // Routes
 import swarmRouter from './routes/swarms'
@@ -22,6 +24,7 @@ import { workerRouter } from './routes/workers'
 import { taskRouter } from './routes/tasks'
 import { healthRouter } from './routes/health'
 import telemetryRouter from './routes/telemetry'
+import observabilityRouter from './routes/observability.routes'
 
 // Load environment variables
 config()
@@ -90,6 +93,7 @@ app.use('/api/enhanced-swarms', enhancedSwarmRouter)
 app.use('/api/workers', workerRouter)
 app.use('/api/tasks', taskRouter)
 app.use('/api/telemetry', telemetryRouter)
+app.use('/api/observability', observabilityRouter)
 app.use('/admin/queues', serverAdapter.getRouter())
 
 // Serve admin dashboard as static files
@@ -136,6 +140,9 @@ const flyService = new FlyService()
 
 // Connect WebSocket service to enhanced-swarms router
 setWebSocketService(wsService)
+
+// Connect WebSocket service to Supabase Realtime for state sync
+supabaseRealtimeService.setWebSocketService(wsService)
 
 // WebSocket message handling
 wss.on('connection', (ws, req) => {
@@ -263,36 +270,43 @@ async function handleScaleMessage(ws: WebSocket, message: any, flyService: FlySe
 
 async function handleLaunchMessage(ws: WebSocket, message: any, flyService: FlyService) {
   try {
-    const { swarmConfig } = message
+    // Updated to match WebSocketLaunchMessage interface
+    const { action, payload } = message
     
-    if (!swarmConfig || !swarmConfig.name) {
-      throw new Error('Invalid launch parameters: swarmConfig with name required')
+    if (!action || action !== 'launch' || !payload || !payload.name) {
+      throw new Error('Invalid launch parameters: action must be "launch" with payload containing name')
     }
     
+    const swarmId = `swarm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const appName = flyService.swarmToFlyApp({ 
-      id: swarmConfig.id || Date.now().toString(), 
-      name: swarmConfig.name 
+      id: swarmId, 
+      name: payload.name 
     } as any)
     
+    // Send initial status
     ws.send(JSON.stringify({
       type: 'launch',
       status: 'starting',
       appName,
+      swarmId,
       timestamp: new Date().toISOString()
     }))
     
     // Create app if it doesn't exist
     await flyService.createApp(appName)
     
-    // Deploy the swarm
-    const machine = await flyService.deployApp(appName, {
-      swarmId: swarmConfig.id,
-      region: swarmConfig.region || 'dfw',
-      cpus: swarmConfig.cpus || 1,
-      memory: swarmConfig.memory || 256,
-      workerType: swarmConfig.workerType || 'general'
+    // Deploy the swarm with machine creation
+    const machine = await flyService.createMachine(appName, {
+      swarmId: swarmId,
+      region: payload.region || 'dfw',
+      cpus: payload.cpus || 1,
+      memory: payload.memory || 256,
+      dockerImage: payload.image || 'flyio/hellofly:latest',
+      env: payload.env || {},
+      workerType: 'general'
     })
     
+    // Send completion status with machine details
     ws.send(JSON.stringify({
       type: 'launch',
       status: 'completed',
@@ -301,10 +315,23 @@ async function handleLaunchMessage(ws: WebSocket, message: any, flyService: FlyS
       timestamp: new Date().toISOString()
     }))
     
-    // Broadcast to all connected clients
+    // Broadcast machine update with full details
+    wsService.broadcastMachineStatusUpdate({
+      type: 'machine_update',
+      machineId: machine.id,
+      status: 'created',
+      cpus: payload.cpus || 1,
+      memory: payload.memory || 256,
+      region: payload.region || 'dfw',
+      privateIp: machine.private_ip,
+      timestamp: new Date().toISOString()
+    })
+    
+    // Also broadcast swarm launched event
     wsService.broadcast({
       type: 'swarm_launched',
       appName,
+      swarmId,
       machineId: machine.id,
       timestamp: new Date().toISOString()
     })
@@ -312,9 +339,12 @@ async function handleLaunchMessage(ws: WebSocket, message: any, flyService: FlyS
   } catch (error) {
     logger.error('Launch operation failed', { error, message })
     ws.send(JSON.stringify({
-      type: 'launch',
-      status: 'error',
+      type: 'error',
       error: (error as Error).message,
+      details: {
+        operation: 'launch',
+        payload: message.payload
+      },
       timestamp: new Date().toISOString()
     }))
   }
@@ -356,12 +386,17 @@ async function startServer() {
     // Initialize Claude Flow Hive Mind
     await initializeHiveMind()
     
+    // Initialize Observability Orchestrator
+    await observabilityOrchestrator.initialize()
+    logger.info('🔍 Observability orchestrator initialized with Supabase Realtime')
+    
     // Start server with WebSocket support
     server.listen(PORT, () => {
       logger.info(`Swarm Manager API running on port ${PORT}`)
       logger.info('🐝 Claude Flow Hive Mind integration active')
       logger.info('🔌 WebSocket server active at wss://localhost:' + PORT + '/ws')
       logger.info('🔐 JWT authentication enabled for WebSocket connections')
+      logger.info('🔄 Supabase Realtime state sync active')
     })
   } catch (error) {
     logger.error('Failed to start server:', error)

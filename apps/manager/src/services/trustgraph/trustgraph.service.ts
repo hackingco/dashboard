@@ -5,7 +5,7 @@ const fetch = require('node-fetch');
 
 export interface TrustGraphNode {
   id: string;
-  type: 'swarm' | 'worker' | 'task' | 'api' | 'dependency';
+  type: 'swarm' | 'worker' | 'task' | 'api' | 'dependency' | 'ws_broadcast' | 'machine';
   label: string;
   metadata?: Record<string, any>;
   timestamp?: Date;

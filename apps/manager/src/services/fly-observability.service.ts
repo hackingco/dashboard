@@ -177,7 +177,7 @@ export class FlyObservabilityService {
     requestPayload: any
   ): Promise<void> {
     try {
-      const { error } = await supabaseRealtimeService.client
+      const { error } = await supabaseRealtimeService.getClient()
         .rpc('create_langfuse_fly_span', {
           p_trace_id: context.trace_id,
           p_operation_type: context.operation_type,
@@ -221,7 +221,7 @@ export class FlyObservabilityService {
       });
 
       // Complete database span
-      await supabaseRealtimeService.client
+      await supabaseRealtimeService.getClient()
         .rpc('complete_langfuse_fly_span', {
           p_span_id: context.span_id,
           p_response_payload: result.success ? result.result : null,
@@ -232,7 +232,7 @@ export class FlyObservabilityService {
 
       // Emit TrustGraph WebSocket node if this is a state-changing operation
       if (this.isStateChangingOperation(context.operation_type) && context.swarm_id) {
-        await supabaseRealtimeService.client
+        await supabaseRealtimeService.getClient()
           .rpc('emit_trustgraph_ws_node', {
             p_swarm_id: context.swarm_id,
             p_node_type: 'api_call',
@@ -420,8 +420,7 @@ export class FlyObservabilityService {
             config: machineConfig,
             cpu_count: config.cpus || 1,
             memory_mb: config.memory || 256,
-            langfuse_trace_id: context.trace_id,
-            provisioned_at: new Date().toISOString()
+            langfuse_trace_id: context.trace_id
           });
         }
 
@@ -477,7 +476,7 @@ export class FlyObservabilityService {
     count: number,
     swarmId?: string
   ): Promise<void> {
-    return this.wrapWithObservability(
+    await this.wrapWithObservability(
       'scale_app',
       appName,
       undefined,
@@ -633,7 +632,7 @@ export class FlyObservabilityService {
     appName: string,
     swarmId?: string
   ): Promise<void> {
-    return this.wrapWithObservability(
+    await this.wrapWithObservability(
       'delete_app',
       appName,
       undefined,

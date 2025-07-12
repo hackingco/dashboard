@@ -127,3 +127,55 @@ export interface LangfuseSpan {
   output?: any
   metadata?: Record<string, any>
 }
+
+// WebSocket Message Types
+export interface WebSocketMessage {
+  type: string
+  timestamp?: string
+  [key: string]: any
+}
+
+export interface WebSocketLaunchMessage extends WebSocketMessage {
+  type: 'launch'
+  action: 'launch'
+  payload: {
+    name: string
+    region?: string
+    image?: string
+    cpus?: number
+    memory?: number
+    env?: Record<string, string>
+  }
+}
+
+export interface WebSocketScaleMessage extends WebSocketMessage {
+  type: 'scale'
+  swarmId: string
+  count: number
+}
+
+export interface WebSocketStatusMessage extends WebSocketMessage {
+  type: 'status'
+  appName: string
+}
+
+export interface WebSocketMachineUpdate extends WebSocketMessage {
+  type: 'machine_update'
+  machineId: string
+  status: 'created' | 'started' | 'stopped' | 'destroyed'
+  cpus: number
+  memory: number
+  region?: string
+  privateIp?: string
+}
+
+export interface WebSocketAuthMessage extends WebSocketMessage {
+  type: 'auth'
+  token: string
+}
+
+export interface WebSocketErrorMessage extends WebSocketMessage {
+  type: 'error'
+  error: string
+  details?: any
+}
