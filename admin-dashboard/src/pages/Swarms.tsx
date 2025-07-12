@@ -1,5 +1,5 @@
-import React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import {
@@ -10,149 +10,185 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/table';
-import { Plus, Search, Play, Pause, Trash2, Scale, Activity } from 'lucide-react';
-
-const swarms = [
-  {
-    id: '1',
-    name: 'api-backend',
-    status: 'running',
-    workers: 12,
-    tasks: 45,
-    cpu: '68%',
-    memory: '4.2GB',
-    created: '2024-01-10',
-  },
-  {
-    id: '2',
-    name: 'data-processing-01',
-    status: 'running',
-    workers: 8,
-    tasks: 23,
-    cpu: '45%',
-    memory: '2.8GB',
-    created: '2024-01-11',
-  },
-  {
-    id: '3',
-    name: 'ml-training',
-    status: 'paused',
-    workers: 16,
-    tasks: 0,
-    cpu: '0%',
-    memory: '0.5GB',
-    created: '2024-01-09',
-  },
-  {
-    id: '4',
-    name: 'web-scraper',
-    status: 'running',
-    workers: 4,
-    tasks: 12,
-    cpu: '22%',
-    memory: '1.1GB',
-    created: '2024-01-11',
-  },
-];
+import { Plus, Search, Play, Pause, Trash2, Scale, Activity, Users, Monitor } from 'lucide-react';
+import { telemetryService, type SwarmTelemetry } from '../services/realtime';
 
 export function Swarms() {
-  const [searchQuery, setSearchQuery] = React.useState('');
+  const [swarms, setSwarms] = useState<SwarmTelemetry[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    // Initialize data
+    setSwarms(telemetryService.getSwarms());
+
+    // Subscribe to real-time updates
+    const unsubscribe = telemetryService.subscribe('swarms', (newSwarms: SwarmTelemetry[]) => {
+      setSwarms(newSwarms);
+    });
+
+    return unsubscribe;
+  }, []);
 
   const filteredSwarms = swarms.filter(swarm =>
-    swarm.name.toLowerCase().includes(searchQuery.toLowerCase())
+    swarm.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    swarm.region.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const getStatusBadge = (status: string) => {
+    const baseClasses = "px-2 py-1 rounded-full text-xs font-medium";
+    switch (status) {
+      case 'running':
+        return `${baseClasses} bg-green-900/50 text-green-300`;
+      case 'scaling':
+        return `${baseClasses} bg-yellow-900/50 text-yellow-300 animate-pulse`;
+      case 'paused':
+        return `${baseClasses} bg-blue-900/50 text-blue-300`;
+      case 'stopped':
+        return `${baseClasses} bg-gray-900/50 text-gray-400`;
+      default:
+        return `${baseClasses} bg-gray-900/50 text-gray-400`;
+    }
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white">Swarms</h1>
           <p className="text-gray-400 mt-1">Manage and monitor your swarm clusters</p>
         </div>
-        <Button className="gap-2">
-          <Plus className="h-4 w-4" />
+        <Button className="bg-blue-600 hover:bg-blue-700">
+          <Plus className="h-4 w-4 mr-2" />
           Create Swarm
         </Button>
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="glass">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-4">
+              <Users className="h-8 w-8 text-blue-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">
+                  {swarms.filter(s => s.status === 'running').length}
+                </p>
+                <p className="text-sm text-gray-400">Active Swarms</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="glass">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-4">
+              <Monitor className="h-8 w-8 text-green-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">
+                  {swarms.reduce((total, swarm) => total + swarm.workers.active, 0)}
+                </p>
+                <p className="text-sm text-gray-400">Total Workers</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="glass">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-4">
+              <Activity className="h-8 w-8 text-purple-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">
+                  {swarms.reduce((total, swarm) => total + swarm.tasks.running, 0)}
+                </p>
+                <p className="text-sm text-gray-400">Running Tasks</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Search and Filters */}
       <Card className="glass">
-        <CardContent className="p-4">
-          <div className="flex gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search swarms..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Button variant="outline">Filter</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Swarms Table */}
-      <Card className="glass">
         <CardHeader>
-          <CardTitle>Active Swarms</CardTitle>
-          <CardDescription>
-            {filteredSwarms.length} swarm{filteredSwarms.length !== 1 ? 's' : ''} found
-          </CardDescription>
+          <div className="flex items-center space-x-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search swarms..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 bg-gray-800 border-gray-700 text-white"
+                />
+              </div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Workers</TableHead>
-                <TableHead>Active Tasks</TableHead>
-                <TableHead>CPU Usage</TableHead>
-                <TableHead>Memory</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+              <TableRow className="border-gray-700">
+                <TableHead className="text-gray-400">Name</TableHead>
+                <TableHead className="text-gray-400">Status</TableHead>
+                <TableHead className="text-gray-400">Workers</TableHead>
+                <TableHead className="text-gray-400">Tasks</TableHead>
+                <TableHead className="text-gray-400">Performance</TableHead>
+                <TableHead className="text-gray-400">Region</TableHead>
+                <TableHead className="text-gray-400">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredSwarms.map((swarm) => (
-                <TableRow key={swarm.id}>
-                  <TableCell className="font-medium">{swarm.name}</TableCell>
+                <TableRow key={swarm.id} className="border-gray-700">
+                  <TableCell className="text-white font-medium">{swarm.name}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className={cn(
-                        "h-2 w-2 rounded-full",
-                        swarm.status === 'running' ? "bg-green-500" : "bg-yellow-500"
-                      )} />
-                      <span className="text-sm capitalize">{swarm.status}</span>
+                    <span className={getStatusBadge(swarm.status)}>
+                      {swarm.status}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-gray-300">
+                    <div className="flex flex-col">
+                      <span>{swarm.workers.active}/{swarm.workers.total}</span>
+                      <span className="text-xs text-gray-500">
+                        {swarm.workers.idle} idle, {swarm.workers.offline} offline
+                      </span>
                     </div>
                   </TableCell>
-                  <TableCell>{swarm.workers}</TableCell>
-                  <TableCell>{swarm.tasks}</TableCell>
-                  <TableCell>{swarm.cpu}</TableCell>
-                  <TableCell>{swarm.memory}</TableCell>
-                  <TableCell className="text-gray-400">{swarm.created}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
+                  <TableCell className="text-gray-300">
+                    <div className="flex flex-col">
+                      <span>{swarm.tasks.running} running</span>
+                      <span className="text-xs text-gray-500">
+                        {swarm.tasks.completed} completed
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-gray-300">
+                    <div className="flex flex-col">
+                      <span>CPU: {Math.round(swarm.performance.cpu)}%</span>
+                      <span className="text-xs text-gray-500">
+                        RAM: {Math.round(swarm.performance.memory)}%
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-gray-300">{swarm.region}</TableCell>
+                  <TableCell>
+                    <div className="flex space-x-2">
                       {swarm.status === 'running' ? (
-                        <Button size="icon" variant="ghost" className="h-8 w-8">
-                          <Pause className="h-4 w-4" />
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                          <Pause className="h-3 w-3" />
                         </Button>
                       ) : (
-                        <Button size="icon" variant="ghost" className="h-8 w-8">
-                          <Play className="h-4 w-4" />
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                          <Play className="h-3 w-3" />
                         </Button>
                       )}
-                      <Button size="icon" variant="ghost" className="h-8 w-8">
-                        <Scale className="h-4 w-4" />
+                      <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                        <Scale className="h-3 w-3" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8">
-                        <Activity className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-red-400 hover:text-red-300">
-                        <Trash2 className="h-4 w-4" />
+                      <Button variant="outline" size="sm" className="h-8 w-8 p-0 text-red-400 border-red-400">
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
                   </TableCell>
@@ -164,8 +200,4 @@ export function Swarms() {
       </Card>
     </div>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
 }

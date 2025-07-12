@@ -1,7 +1,7 @@
 // API Configuration for admin.hacking.co
 // This will connect to the deployed swarm-manager service
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://swarm-manager.fly.dev/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://swarm-mgr-1739853764.fly.dev/api';
 
 export interface SwarmInfo {
   id: string;
