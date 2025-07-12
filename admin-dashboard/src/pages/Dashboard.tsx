@@ -2,47 +2,98 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Activity, Users, Monitor, Zap, ArrowUp, ArrowDown, Clock, AlertTriangle } from 'lucide-react';
-import { telemetryService, type SystemMetrics, type SwarmTelemetry, type LogEntry } from '../services/realtime';
+import { apiService, type RealSwarmData, type RealSystemStatus } from '../services/api-with-cors';
 
 export function Dashboard() {
-  const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
-  const [swarms, setSwarms] = useState<SwarmTelemetry[]>([]);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [previousMetrics, setPreviousMetrics] = useState<SystemMetrics | null>(null);
+  const [systemStatus, setSystemStatus] = useState<RealSystemStatus | null>(null);
+  const [swarms, setSwarms] = useState<RealSwarmData[]>([]);
+  const [previousStatus, setPreviousStatus] = useState<RealSystemStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Initialize data
-    setMetrics(telemetryService.getCurrentMetrics());
-    setSwarms(telemetryService.getSwarms());
-    setLogs(telemetryService.getLogs(10));
+    let mounted = true;
 
-    // Subscribe to real-time updates
-    const metricsUnsubscribe = telemetryService.subscribe('metrics', (newMetrics: SystemMetrics) => {
-      setPreviousMetrics(metrics);
-      setMetrics(newMetrics);
+    const loadInitialData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const [swarmsData, statusData] = await Promise.all([
+          apiService.getSwarms(),
+          apiService.getSystemStatus()
+        ]);
+        
+        if (mounted) {
+          setSwarms(swarmsData);
+          setSystemStatus(statusData);
+        }
+      } catch (err) {
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Failed to load data');
+          console.error('Failed to load dashboard data:', err);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadInitialData();
+
+    const systemUnsubscribe = apiService.subscribe('system', (newStatus: RealSystemStatus) => {
+      if (mounted) {
+        setPreviousStatus(systemStatus);
+        setSystemStatus(newStatus);
+      }
     });
 
-    const swarmsUnsubscribe = telemetryService.subscribe('swarms', (newSwarms: SwarmTelemetry[]) => {
-      setSwarms(newSwarms);
-    });
-
-    const logsUnsubscribe = telemetryService.subscribe('logs', (newLog: LogEntry) => {
-      setLogs(prev => [newLog, ...prev.slice(0, 9)]);
+    const swarmsUnsubscribe = apiService.subscribe('swarms', (newSwarms: RealSwarmData[]) => {
+      if (mounted) {
+        setSwarms(newSwarms);
+      }
     });
 
     return () => {
-      metricsUnsubscribe();
+      mounted = false;
+      systemUnsubscribe();
       swarmsUnsubscribe();
-      logsUnsubscribe();
     };
-  }, [metrics]);
+  }, []);
 
-  if (!metrics) {
+  if (loading) {
     return (
       <div className="space-y-6">
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="text-gray-400 mt-2">Loading telemetry data...</p>
+          <p className="text-gray-400 mt-2">Loading real swarm data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-12">
+          <div className="bg-red-900/50 border border-red-600 rounded-lg p-6 max-w-md mx-auto">
+            <h3 className="text-red-300 font-medium mb-2">Failed to load dashboard data</h3>
+            <p className="text-red-400 text-sm mb-4">{error}</p>
+            <Button onClick={() => window.location.reload()} className="bg-red-600 hover:bg-red-700">
+              Retry
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!systemStatus) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-12">
+          <p className="text-gray-400">No system data available</p>
         </div>
       </div>
     );
@@ -60,26 +111,26 @@ export function Dashboard() {
   const stats = [
     {
       name: 'Active Swarms',
-      value: metrics.swarms.active.toString(),
-      change: calculateChange(metrics.swarms.active, previousMetrics?.swarms.active),
+      value: systemStatus.activeSwarms.toString(),
+      change: calculateChange(systemStatus.activeSwarms, previousStatus?.activeSwarms),
       icon: Users,
     },
     {
-      name: 'Running Workers',
-      value: metrics.workers.active.toString(),
-      change: calculateChange(metrics.workers.active, previousMetrics?.workers.active),
+      name: 'Running Machines',
+      value: systemStatus.runningMachines.toString(),
+      change: calculateChange(systemStatus.runningMachines, previousStatus?.runningMachines),
       icon: Monitor,
     },
     {
       name: 'Tasks Completed',
-      value: metrics.tasks.completed.toLocaleString(),
-      change: calculateChange(metrics.tasks.completed, previousMetrics?.tasks.completed),
+      value: systemStatus.completedTasks.toLocaleString(),
+      change: calculateChange(systemStatus.completedTasks, previousStatus?.completedTasks),
       icon: Activity,
     },
     {
       name: 'System Load',
-      value: `${Math.round(metrics.cpu.usage)}%`,
-      change: calculateChange(metrics.cpu.usage, previousMetrics?.cpu.usage),
+      value: `${Math.round(systemStatus.systemLoad.cpu)}%`,
+      change: calculateChange(systemStatus.systemLoad.cpu, previousStatus?.systemLoad.cpu),
       icon: Zap,
     },
   ];
@@ -125,7 +176,7 @@ export function Dashboard() {
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-400">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          Live Data
+          Live API Data
         </div>
       </div>
 
@@ -164,14 +215,14 @@ export function Dashboard() {
             <CardTitle className="text-sm font-medium text-gray-400">CPU Usage</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">{Math.round(metrics.cpu.usage)}%</div>
+            <div className="text-2xl font-bold text-white">{Math.round(systemStatus.systemLoad.cpu)}%</div>
             <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
               <div 
                 className="bg-blue-500 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${metrics.cpu.usage}%` }}
+                style={{ width: `${systemStatus.systemLoad.cpu}%` }}
               ></div>
             </div>
-            <p className="text-xs text-gray-400 mt-1">{metrics.cpu.cores} cores @ {metrics.cpu.frequency}GHz</p>
+            <p className="text-xs text-gray-400 mt-1">Average across all swarms</p>
           </CardContent>
         </Card>
 
@@ -180,14 +231,14 @@ export function Dashboard() {
             <CardTitle className="text-sm font-medium text-gray-400">Memory Usage</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">{Math.round(metrics.memory.used)}%</div>
+            <div className="text-2xl font-bold text-white">{Math.round(systemStatus.systemLoad.memory)}%</div>
             <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
               <div 
                 className="bg-green-500 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${metrics.memory.used}%` }}
+                style={{ width: `${systemStatus.systemLoad.memory}%` }}
               ></div>
             </div>
-            <p className="text-xs text-gray-400 mt-1">{metrics.memory.total}GB total</p>
+            <p className="text-xs text-gray-400 mt-1">Across {systemStatus.totalMachines} machines</p>
           </CardContent>
         </Card>
 
@@ -199,15 +250,15 @@ export function Dashboard() {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-400">In</span>
-                <span className="text-sm text-white">{Math.round(metrics.network.inbound)} MB/s</span>
+                <span className="text-sm text-white">{Math.round(systemStatus.systemLoad.network.inbound / 1024)} MB/s</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-400">Out</span>
-                <span className="text-sm text-white">{Math.round(metrics.network.outbound)} MB/s</span>
+                <span className="text-sm text-white">{Math.round(systemStatus.systemLoad.network.outbound / 1024)} MB/s</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-400">Connections</span>
-                <span className="text-sm text-white">{metrics.network.connections}</span>
+                <span className="text-sm text-gray-400">Total Swarms</span>
+                <span className="text-sm text-white">{systemStatus.totalSwarms}</span>
               </div>
             </div>
           </CardContent>
@@ -226,18 +277,18 @@ export function Dashboard() {
               <div key={swarm.id} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
                 <div className="flex items-center space-x-3">
                   <div className={`w-2 h-2 rounded-full ${
-                    swarm.status === 'running' ? 'bg-green-500' :
+                    swarm.status === 'active' ? 'bg-green-500' :
                     swarm.status === 'scaling' ? 'bg-yellow-500 animate-pulse' :
                     'bg-gray-500'
                   }`}></div>
                   <div>
                     <h4 className="text-sm font-medium text-white">{swarm.name}</h4>
-                    <p className="text-xs text-gray-400">{swarm.region} • {swarm.workers.active}/{swarm.workers.total} workers</p>
+                    <p className="text-xs text-gray-400">{swarm.region} • {swarm.metrics.runningMachines}/{swarm.metrics.totalMachines} machines</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm text-white">{swarm.tasks.running} running</div>
-                  <div className="text-xs text-gray-400">{swarm.tasks.completed} completed</div>
+                  <div className="text-sm text-white">{Math.round(swarm.metrics.cpuUsage)}% CPU</div>
+                  <div className="text-xs text-gray-400">{Math.round(swarm.metrics.memoryUsage)}% Memory</div>
                 </div>
               </div>
             ))}
@@ -256,39 +307,45 @@ export function Dashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {logs.map((log) => {
-              const LevelIcon = getLevelIcon(log.level);
-              return (
-                <div key={log.id} className="flex items-start gap-4">
-                  <LevelIcon className={`w-4 h-4 mt-0.5 ${getLevelColor(log.level)}`} />
+            {swarms.length === 0 ? (
+              <div className="text-center text-gray-400 py-8">
+                No swarms available. <Button variant="outline" className="ml-2">Create your first swarm</Button>
+              </div>
+            ) : (
+              swarms.slice(0, 5).map((swarm) => (
+                <div key={swarm.id} className="flex items-start gap-4">
+                  <Activity className={`w-4 h-4 mt-0.5 ${
+                    swarm.status === 'active' ? 'text-green-400' :
+                    swarm.status === 'scaling' ? 'text-yellow-400' :
+                    swarm.status === 'stopped' ? 'text-red-400' :
+                    'text-gray-400'
+                  }`} />
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm text-gray-300">{log.message}</p>
+                      <p className="text-sm text-gray-300">
+                        {swarm.name} - {swarm.status} with {swarm.metrics.runningMachines} machines
+                      </p>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        log.level === 'error' ? 'bg-red-900/50 text-red-300' :
-                        log.level === 'warn' ? 'bg-yellow-900/50 text-yellow-300' :
-                        log.level === 'info' ? 'bg-blue-900/50 text-blue-300' :
+                        swarm.status === 'active' ? 'bg-green-900/50 text-green-300' :
+                        swarm.status === 'scaling' ? 'bg-yellow-900/50 text-yellow-300' :
+                        swarm.status === 'stopped' ? 'bg-red-900/50 text-red-300' :
                         'bg-gray-900/50 text-gray-400'
                       }`}>
-                        {log.level}
+                        {swarm.status}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-gray-500">
                       <Clock className="w-3 h-3" />
-                      <span>{formatTimestamp(log.timestamp)}</span>
+                      <span>{formatTimestamp(swarm.updated_at)}</span>
                       <span>•</span>
-                      <span>{log.source}</span>
-                      {log.swarmId && (
-                        <>
-                          <span>•</span>
-                          <span className="text-blue-400">{log.swarmId}</span>
-                        </>
-                      )}
+                      <span>{swarm.region}</span>
+                      <span>•</span>
+                      <span className="text-blue-400">{swarm.id}</span>
                     </div>
                   </div>
                 </div>
-              );
-            })}
+              ))
+            )}
           </div>
         </CardContent>
       </Card>

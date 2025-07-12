@@ -1,0 +1,17 @@
+node_modules
+src
+public
+*.md
+*.sh
+*.json
+!package.json
+!vercel.json
+.env*
+.git*
+Dockerfile
+nginx.conf
+vite.config.ts
+tsconfig*.json
+eslint.config.js
+postcss.config.js
+tailwind.config.js

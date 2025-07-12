@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import logger from '../logger';
 import { v4 as uuidv4 } from 'uuid';
-import fetch from 'node-fetch';
+const fetch = require('node-fetch');
 
 export interface TrustGraphNode {
   id: string;
@@ -80,7 +80,7 @@ export class TrustGraphService extends EventEmitter {
   async createEdge(edge: Omit<TrustGraphEdge, 'id' | 'timestamp'>): Promise<TrustGraphEdge> {
     const fullEdge: TrustGraphEdge = {
       ...edge,
-      id: edge.id || uuidv4(),
+      id: uuidv4(),
       timestamp: new Date()
     };
 

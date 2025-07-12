@@ -258,7 +258,7 @@ export class HiveService {
       // Retrieve recent memory
       const recentMemory = this.db?.prepare(
         'SELECT * FROM swarm_memory WHERE swarm_id = ? ORDER BY updated_at DESC LIMIT 20'
-      ).all(swarmId) || [];
+      ).all(swarmId) as Array<{key: string; value: string; updated_at: number}> || [];
       
       return {
         swarmId,
@@ -274,7 +274,7 @@ export class HiveService {
         },
         memory: {
           status: memoryStatus,
-          recent: recentMemory.map(m => ({
+          recent: recentMemory.map((m: any) => ({
             key: m.key,
             value: JSON.parse(m.value as string),
             updated: new Date(m.updated_at * 1000).toISOString()
@@ -375,7 +375,7 @@ export class HiveService {
       ).get(swarmId, key);
       
       if (result) {
-        const value = JSON.parse(result.value as string);
+        const value = JSON.parse((result as any).value as string);
         swarm.memory.set(key, value); // Cache locally
         return value;
       }

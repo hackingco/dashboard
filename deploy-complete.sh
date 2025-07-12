@@ -53,11 +53,26 @@ check_fly_cli() {
 
 # Check authentication
 check_auth() {
-    if ! fly auth whoami &> /dev/null; then
-        print_error "Not authenticated with Fly.io. Please run: fly auth login"
-        exit 1
+    # Load authentication if available
+    if [ -f "apps/manager/fly-auth-env.sh" ]; then
+        source apps/manager/fly-auth-env.sh
+        print_info "Loaded authentication from apps/manager/fly-auth-env.sh"
+    elif [ -f "fly-auth-env.sh" ]; then
+        source fly-auth-env.sh
+        print_info "Loaded authentication from fly-auth-env.sh"
     fi
-    print_status "Authenticated with Fly.io"
+    
+    if ! fly auth whoami &> /dev/null; then
+        print_error "Not authenticated with Fly.io. Running authentication setup..."
+        if [ -f "apps/manager/setup-fly-auth.sh" ]; then
+            cd apps/manager && ./setup-fly-auth.sh && cd - > /dev/null
+            source apps/manager/fly-auth-env.sh
+        else
+            print_error "Please run: fly auth login or setup authentication"
+            exit 1
+        fi
+    fi
+    print_status "Authenticated with Fly.io as $(fly auth whoami)"
 }
 
 # Create Redis instance

@@ -106,9 +106,16 @@ if [ -n "$FLY_CMD" ]; then
     echo ""
     print_info "Getting detailed application status..."
     
+    # Load authentication if available
+    if [ -f "apps/manager/fly-auth-env.sh" ]; then
+        source apps/manager/fly-auth-env.sh
+    elif [ -f "fly-auth-env.sh" ]; then
+        source fly-auth-env.sh
+    fi
+    
     # Check if authenticated
     if $FLY_CMD auth whoami &> /dev/null; then
-        print_status "Authenticated with Fly.io"
+        print_status "Authenticated with Fly.io as $($FLY_CMD auth whoami)"
         
         # Get app statuses
         APPS=("swarm-manager" "swarm-admin" "swarm-redis")
