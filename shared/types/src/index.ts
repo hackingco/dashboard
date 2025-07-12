@@ -162,11 +162,29 @@ export interface WebSocketStatusMessage extends WebSocketMessage {
 export interface WebSocketMachineUpdate extends WebSocketMessage {
   type: 'machine_update'
   machineId: string
-  status: 'created' | 'started' | 'stopped' | 'destroyed'
-  cpus: number
-  memory: number
+  appName?: string
+  swarmId?: string
+  status: 'created' | 'started' | 'stopped' | 'destroyed' | 'scaling' | 'running'
+  cpus?: number
+  memory?: number
   region?: string
   privateIp?: string
+  correlationId?: string
+  data?: any
+}
+
+export interface WebSocketSwarmUpdate extends WebSocketMessage {
+  type: 'swarm_update' | 'swarm_scaled' | 'swarm_launched' | 'swarm_scaling'
+  swarmId: string
+  status: string
+  correlationId?: string
+  data?: {
+    targetCount?: number
+    currentCount?: number
+    agents?: any[]
+    metrics?: any
+    error?: string
+  }
 }
 
 export interface WebSocketAuthMessage extends WebSocketMessage {

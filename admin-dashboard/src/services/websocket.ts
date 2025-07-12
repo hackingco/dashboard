@@ -1,4 +1,5 @@
 // WebSocket client service for real-time communication with swarm manager
+import { WebSocketDataTransformer } from '../types/websocket';
 class WebSocketClient {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
@@ -105,10 +106,15 @@ class WebSocketClient {
       case 'swarm_update':
       case 'swarm_scaled':
       case 'swarm_launched':
-        this.notifySubscribers('swarm', data);
+      case 'swarm_scaling':
+        // Transform agent-based data to machine-based format for UI compatibility
+        const transformedSwarmData = this.transformSwarmUpdate(data);
+        this.notifySubscribers('swarm', transformedSwarmData);
         break;
       case 'machine_update':
-        this.notifySubscribers('machine', data);
+        // Handle direct machine updates from Fly.io API
+        const transformedMachineData = this.transformMachineUpdate(data);
+        this.notifySubscribers('machine', transformedMachineData);
         break;
       case 'metrics_update':
         this.notifySubscribers('metrics', data);
@@ -125,6 +131,20 @@ class WebSocketClient {
         console.log('Unknown WebSocket message type:', type);
         this.notifySubscribers('unknown', data);
     }
+  }
+
+  /**
+   * Transform agent-based swarm updates to machine-based format for UI compatibility
+   */
+  private transformSwarmUpdate(data: any): any {
+    return WebSocketDataTransformer.transformSwarmUpdate(data);
+  }
+
+  /**
+   * Transform machine updates from Fly.io API to UI format
+   */
+  private transformMachineUpdate(data: any): any {
+    return WebSocketDataTransformer.transformMachineUpdate(data);
   }
 
   private handleReconnect(): void {
@@ -172,24 +192,82 @@ class WebSocketClient {
   }
 
   /**
-   * Send scale command to swarm
+   * Send scale command to swarm (supports both enhanced and legacy formats)
    */
-  scaleSwarm(swarmId: string, count: number): Promise<any> {
-    return this.sendMessage({
-      type: 'scale',
-      swarmId,
-      count,
-    });
+  async scaleSwarm(swarmId: string, count: number): Promise<any> {
+    // Try enhanced API first, fall back to WebSocket message
+    try {
+      const response = await fetch(`${this.getApiBaseUrl()}/enhanced-swarms/${swarmId}/scale`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': this.token ? `Bearer ${this.token}` : '',
+        },
+        body: JSON.stringify({ targetAgents: count, targetCount: count }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Enhanced swarm scale response:', result);
+        return result;
+      } else {
+        throw new Error(`Enhanced API scale failed: ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('Enhanced API scaling failed, falling back to WebSocket:', error);
+      
+      // Fallback to WebSocket message
+      return this.sendMessage({
+        type: 'scale',
+        swarmId,
+        count,
+        targetAgents: count,
+      });
+    }
   }
 
   /**
-   * Send launch command to swarm
+   * Send launch command to swarm (supports both enhanced and legacy formats)
    */
-  launchSwarm(swarmConfig: any): Promise<any> {
-    return this.sendMessage({
-      type: 'launch',
-      swarmConfig,
-    });
+  async launchSwarm(swarmConfig: any): Promise<any> {
+    // Try enhanced API first
+    try {
+      const response = await fetch(`${this.getApiBaseUrl()}/enhanced-swarms/${swarmConfig.id}/launch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': this.token ? `Bearer ${this.token}` : '',
+        },
+        body: JSON.stringify({
+          region: swarmConfig.region || 'ord',
+          cpus: swarmConfig.cpus || 1,
+          memory: swarmConfig.memory || 256,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Enhanced swarm launch response:', result);
+        return result;
+      } else {
+        throw new Error(`Enhanced API launch failed: ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('Enhanced API launch failed, falling back to WebSocket:', error);
+      
+      // Fallback to WebSocket message
+      return this.sendMessage({
+        type: 'launch',
+        swarmConfig,
+      });
+    }
+  }
+
+  /**
+   * Get API base URL for HTTP requests
+   */
+  private getApiBaseUrl(): string {
+    return 'https://swarm-manager-live.fly.dev/api';
   }
 
   /**

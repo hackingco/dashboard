@@ -3,7 +3,9 @@ import { promisify } from 'util';
 import logger from './logger';
 import { Swarm, Worker } from '@swarm/types';
 import { trustGraphService } from './trustgraph/trustgraph.service';
-import { langfuseService } from './observability/langfuse.service';
+import { langfuseService } from './langfuse/langfuse.service';
+import { langfuseTracer } from '../utils/langfuse-tracer';
+import { flyApiClient } from './fly-api-client.service';
 import { v4 as uuidv4 } from 'uuid';
 
 const execAsync = promisify(exec);
@@ -19,38 +21,104 @@ export class FlyService {
     }
   }
 
-  private async flyApiRequest(method: string, path: string, body?: any) {
-    const response = await fetch(`${this.flyApiUrl}${path}`, {
-      method,
-      headers: {
-        'Authorization': `Bearer ${this.flyApiToken}`,
-        'Content-Type': 'application/json',
+  private async flyApiRequest(method: string, path: string, body?: any, operationName?: string) {
+    const endpoint = path;
+    const appName = this.extractAppName(path);
+    const operation = operationName || this.getOperationFromPath(method, path);
+    
+    return await langfuseTracer.traceApiCall(
+      {
+        spanName: `fly.api.${operation}`,
+        tags: {
+          endpoint,
+          app_name: appName || 'unknown',
+          http_method: method
+        }
       },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+      async () => {
+        const response = await fetch(`${this.flyApiUrl}${path}`, {
+          method,
+          headers: {
+            'Authorization': `Bearer ${this.flyApiToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: body ? JSON.stringify(body) : undefined,
+        });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Fly API error: ${response.status} - ${error}`);
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Fly API error: ${response.status} - ${error}`);
+        }
+
+        return response.json();
+      }
+    ).then(result => result.data);
+  }
+
+  private extractAppName(path: string): string | null {
+    const match = path.match(/\/apps\/([^\/]+)/);
+    return match ? match[1] : null;
+  }
+
+  private getOperationFromPath(method: string, path: string): string {
+    if (path.includes('/apps') && method === 'POST' && !path.includes('/machines')) {
+      return 'createApp';
     }
-
-    return response.json();
+    if (path.includes('/apps') && method === 'DELETE') {
+      return 'destroyApp';
+    }
+    if (path.includes('/apps') && method === 'GET' && !path.includes('/machines')) {
+      return 'listApps';
+    }
+    if (path.includes('/machines') && method === 'GET') {
+      return 'getMachines';
+    }
+    if (path.includes('/machines') && method === 'POST' && !path.includes('/stop') && !path.includes('/start') && !path.includes('/restart')) {
+      return 'createMachine';
+    }
+    if (path.includes('/machines') && method === 'POST' && path.includes('/start')) {
+      return 'startMachine';
+    }
+    if (path.includes('/machines') && method === 'POST' && path.includes('/stop')) {
+      return 'stopMachine';
+    }
+    if (path.includes('/machines') && method === 'POST' && path.includes('/restart')) {
+      return 'restartMachine';
+    }
+    if (path.includes('/machines') && method === 'DELETE') {
+      return 'destroyMachine';
+    }
+    if (path.includes('/machines') && method === 'POST') {
+      return 'scaleMachine';
+    }
+    return 'unknown';
   }
 
   async createApp(appName: string, org = 'personal'): Promise<void> {
-    try {
-      const { stdout, stderr } = await execAsync(
-        `fly apps create ${appName} --org ${org}`,
-        { env: { ...process.env, FLY_API_TOKEN: this.flyApiToken } }
-      );
-      logger.info(`Created Fly app: ${appName}`, { stdout, stderr });
-    } catch (error: any) {
-      if (error.message.includes('already exists')) {
-        logger.info(`App ${appName} already exists`);
-      } else {
-        throw error;
+    const response = await langfuseTracer.traceApiCall(
+      {
+        spanName: 'fly.api.createApp',
+        tags: {
+          endpoint: `/apps/${appName}`,
+          app_name: appName,
+          org: org
+        }
+      },
+      async () => {
+        try {
+          await flyApiClient.createApp(appName, org);
+          logger.info(`Created Fly app: ${appName}`);
+          return { created: true, appName };
+        } catch (error: any) {
+          if (error.message.includes('already exists')) {
+            logger.info(`App ${appName} already exists`);
+            return { created: false, appName, reason: 'already_exists' };
+          } else {
+            throw error;
+          }
+        }
       }
-    }
+    );
   }
 
   async createMachine(appName: string, config: any): Promise<any> {
@@ -275,11 +343,20 @@ export class FlyService {
 
   async getAppStatus(appName: string): Promise<any> {
     try {
-      const { stdout } = await execAsync(
-        `fly status --app ${appName} --json`,
-        { env: { ...process.env, FLY_API_TOKEN: this.flyApiToken } }
-      );
-      return JSON.parse(stdout);
+      const machines = await flyApiClient.getAppMachines(appName);
+      // Transform machines data to match expected status format
+      return {
+        Name: appName,
+        Machines: machines,
+        Allocations: machines.map(machine => ({
+          ID: machine.id,
+          Status: machine.state,
+          Region: machine.region,
+          PrivateIP: machine.private_ip,
+          CreatedAt: machine.created_at,
+          UpdatedAt: machine.updated_at
+        }))
+      };
     } catch (error) {
       logger.error('Failed to get app status', { appName, error });
       throw error;
@@ -333,16 +410,20 @@ export class FlyService {
   }
 
   async deleteApp(appName: string): Promise<void> {
-    try {
-      const { stdout, stderr } = await execAsync(
-        `fly apps destroy ${appName} --yes`,
-        { env: { ...process.env, FLY_API_TOKEN: this.flyApiToken } }
-      );
-      logger.info(`Deleted app: ${appName}`, { stdout, stderr });
-    } catch (error) {
-      logger.error('Failed to delete app', { appName, error });
-      throw error;
-    }
+    const response = await langfuseTracer.traceApiCall(
+      {
+        spanName: 'fly.api.destroyApp',
+        tags: {
+          endpoint: `/apps/${appName}`,
+          app_name: appName
+        }
+      },
+      async () => {
+        await flyApiClient.destroyApp(appName);
+        logger.info(`Deleted app: ${appName}`);
+        return { deleted: true, appName };
+      }
+    );
   }
 
   private generateFlyConfig(appName: string, config: any): string {
@@ -417,19 +498,30 @@ CMD ["node", "src/index.js"]
 
   // Get all Fly apps that are swarm workers
   async listSwarmApps(): Promise<string[]> {
-    try {
-      const { stdout } = await execAsync(
-        `fly apps list --json`,
-        { env: { ...process.env, FLY_API_TOKEN: this.flyApiToken } }
-      );
-      const apps = JSON.parse(stdout);
-      return apps
-        .filter((app: any) => app.Name.startsWith('swarm-'))
-        .map((app: any) => app.Name);
-    } catch (error) {
-      logger.error('Failed to list Fly apps', { error });
-      return [];
-    }
+    const response = await langfuseTracer.traceApiCall(
+      {
+        spanName: 'fly.api.listApps',
+        tags: {
+          endpoint: '/apps',
+          app_name: 'all',
+          filter: 'swarm-*'
+        }
+      },
+      async () => {
+        try {
+          const apps = await flyApiClient.listApps();
+          const swarmApps = apps
+            .filter(app => app.Name.startsWith('swarm-'))
+            .map(app => app.Name);
+          return { apps: swarmApps, total: swarmApps.length };
+        } catch (error) {
+          logger.error('Failed to list Fly apps', { error });
+          return { apps: [], total: 0 };
+        }
+      }
+    );
+    
+    return response.data.apps;
   }
 
   async getMachineStats(appName: string, machineId: string): Promise<any> {
