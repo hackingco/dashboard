@@ -32,7 +32,6 @@ Dashboard is a cutting-edge swarm orchestration platform that transforms distrib
 
 📊 **Advanced Observability**
 - Langfuse LLM tracing and performance monitoring
-- TrustGraph workflow orchestration
 - Real-time metrics and logging
 - Custom alerting and notifications
 
@@ -59,7 +58,7 @@ Dashboard consists of three main components working in harmony:
 **Location:** `apps/manager/`
 - **Framework:** Express.js with TypeScript
 - **Features:** Fly.io integration, task orchestration, WebSocket real-time updates
-- **Services:** Supabase persistence, Langfuse tracing, TrustGraph coordination
+- **Services:** Supabase persistence, Langfuse tracing
 - **Scaling:** Horizontal auto-scaling with health checks
 
 ### 🐝 Worker Swarms
@@ -84,7 +83,7 @@ Dashboard consists of three main components working in harmony:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/dashboard.git
+git clone https://github.com/hackingco/dashboard.git
 cd dashboard
 
 # Install dependencies
@@ -117,7 +116,6 @@ REDIS_HOST=your-redis-host
 REDIS_PORT=6379
 JWT_SECRET=your-jwt-secret
 LANGFUSE_SECRET_KEY=your-langfuse-secret-key
-TRUSTGRAPH_API_KEY=your-trustgraph-api-key
 ```
 
 #### Worker (`apps/worker/.env`)
@@ -159,7 +157,6 @@ cd apps/worker && pnpm deploy
 
 3. **Monitoring Integration**
    - Configure Langfuse for LLM observability
-   - Set up TrustGraph for workflow monitoring
    - Enable custom alerting rules
 
 ---
@@ -244,17 +241,6 @@ Dashboard provides comprehensive LLM observability through Langfuse:
 - Token usage tracking and cost analysis
 - Performance benchmarking across models
 - Quality scoring and feedback loops
-
-### TrustGraph Workflows
-
-Advanced workflow orchestration with dependency management:
-
-- DAG-based task execution
-- Checkpoint validation and rollback
-- Parallel execution optimization
-- State persistence across failures
-
----
 
 ## 🧪 Testing
 
@@ -365,7 +351,6 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - [Fly.io Machines API](https://fly.io/docs/machines/)
 - [Supabase Documentation](https://supabase.com/docs)
 - [Langfuse Observability](https://langfuse.com/docs)
-- [TrustGraph Workflows](https://trustgraph.com/docs)
 
 ---
 
