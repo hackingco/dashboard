@@ -188,6 +188,184 @@ groups:
           summary: "Redis experiencing slow commands"
           description: "{{ $value }} slow commands per minute"
 
+  - name: langfuse_monitoring
+    interval: 30s
+    rules:
+      - alert: LangfuseDown
+        expr: up{job="langfuse"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Langfuse server is down"
+          description: "Langfuse has been unavailable for more than 1 minute"
+          
+      - alert: LangfuseHighTraceIngestionRate
+        expr: rate(langfuse_traces_total[5m]) > 1000
+        for: 5m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "High trace ingestion rate"
+          description: "Langfuse is ingesting {{ $value }} traces per second"
+          
+      - alert: LangfuseDBConnectionIssues
+        expr: |
+          langfuse_db_connections_active 
+          / langfuse_db_connections_max > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Langfuse database connection pool near limit"
+          description: "{{ $value | humanizePercentage }} of database connections in use"
+          
+      - alert: LangfuseHighTokenUsage
+        expr: rate(langfuse_tokens_total[5m]) > 10000
+        for: 10m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "High token processing rate"
+          description: "Processing {{ $value }} tokens per second"
+          
+      - alert: LangfuseTraceProcessingBacklog
+        expr: langfuse_trace_queue_size > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Langfuse trace processing backlog"
+          description: "{{ $value }} traces in processing queue"
+
+  - name: swarm_coordination
+    interval: 30s
+    rules:
+      - alert: SwarmManagerDown
+        expr: up{job="swarm-manager"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Swarm manager is down"
+          description: "Swarm coordination manager is unavailable"
+          
+      - alert: SwarmWorkerDown
+        expr: up{job=~"swarm-worker.*"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Swarm worker {{ $labels.instance }} is down"
+          description: "Worker {{ $labels.instance }} has been down for more than 1 minute"
+          
+      - alert: SwarmHighTaskFailureRate
+        expr: rate(swarm_tasks_failed_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High swarm task failure rate"
+          description: "{{ $value }} task failures per second"
+          
+      - alert: SwarmLowWorkerCapacity
+        expr: |
+          swarm_workers_available 
+          / swarm_workers_total < 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Low swarm worker capacity"
+          description: "Only {{ $value | humanizePercentage }} of workers available"
+          
+      - alert: SwarmCoordinationMemoryHigh
+        expr: swarm_memory_db_size_bytes > 100000000  # 100MB
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Swarm coordination memory usage high"
+          description: "Memory database size is {{ $value | humanizeBytes }}"
+
+  - name: load_balancer_monitoring
+    interval: 30s
+    rules:
+      - alert: LoadBalancerDown
+        expr: up{job="haproxy"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Load balancer is down"
+          description: "HAProxy load balancer is unavailable"
+          
+      - alert: LoadBalancerBackendDown
+        expr: haproxy_server_up == 0
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Load balancer backend {{ $labels.server }} is down"
+          description: "Backend server in {{ $labels.proxy }} is unavailable"
+          
+      - alert: LoadBalancerHighErrorRate
+        expr: |
+          rate(haproxy_server_http_responses_total{code=~"5.."}[5m]) 
+          / rate(haproxy_server_http_responses_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High error rate on load balancer backend"
+          description: "{{ $value | humanizePercentage }} error rate on {{ $labels.server }}"
+
+  - name: security_monitoring
+    interval: 30s
+    rules:
+      - alert: HighFailedAuthenticationRate
+        expr: rate(swarm_auth_failures_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High authentication failure rate"
+          description: "{{ $value }} authentication failures per second"
+          
+      - alert: UnauthorizedAPIAccess
+        expr: rate(http_requests_total{status="401"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High rate of unauthorized API access"
+          description: "{{ $value }} unauthorized requests per second"
+          
+      - alert: SuspiciousLangfuseActivity
+        expr: rate(langfuse_requests_total{method="DELETE"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: info
+          team: security
+        annotations:
+          summary: "High rate of DELETE operations in Langfuse"
+          description: "{{ $value }} DELETE requests per second to Langfuse"
+
   - name: business_metrics
     interval: 1m
     rules:
@@ -224,3 +402,25 @@ groups:
         annotations:
           summary: "API usage spike detected"
           description: "API requests are 3x higher than hourly average"
+          
+      - alert: LowLangfuseUsage
+        expr: rate(langfuse_traces_total[1h]) < 10
+        for: 2h
+        labels:
+          severity: info
+          team: business
+        annotations:
+          summary: "Low Langfuse usage"
+          description: "Less than 10 traces per hour for 2 hours"
+          
+      - alert: SwarmEfficiencyLow
+        expr: |
+          swarm_tasks_completed_total 
+          / swarm_tasks_started_total < 0.8
+        for: 1h
+        labels:
+          severity: warning
+          team: business
+        annotations:
+          summary: "Low swarm task completion rate"
+          description: "Only {{ $value | humanizePercentage }} of tasks are completing successfully"
