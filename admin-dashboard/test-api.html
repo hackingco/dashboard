@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test</title>
+</head>
+<body>
+    <h1>Testing Swarm Manager API</h1>
+    <div id="status">Checking API...</div>
+    <pre id="result"></pre>
+    
+    <script>
+        const API_URL = 'https://swarm-manager-live.fly.dev/api';
+        const statusEl = document.getElementById('status');
+        const resultEl = document.getElementById('result');
+        
+        async function testAPI() {
+            try {
+                // Test health endpoint
+                statusEl.textContent = 'Testing health endpoint...';
+                const healthResponse = await fetch(API_URL.replace('/api', '/health'));
+                const healthData = await healthResponse.json();
+                
+                // Test swarms endpoint
+                statusEl.textContent = 'Testing swarms endpoint...';
+                const swarmsResponse = await fetch(API_URL + '/enhanced-swarms');
+                const swarmsData = await swarmsResponse.json();
+                
+                statusEl.textContent = '✅ API is working!';
+                resultEl.textContent = JSON.stringify({
+                    health: healthData,
+                    swarms: swarmsData,
+                    cors: 'Enabled'
+                }, null, 2);
+            } catch (error) {
+                statusEl.textContent = '❌ API Error: ' + error.message;
+                resultEl.textContent = error.stack;
+            }
+        }
+        
+        testAPI();
+    </script>
+</body>
+</html>

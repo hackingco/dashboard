@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { Swarm, CreateSwarmRequest } from '@swarm/types';
-import { swarmOperations, workerOperations, logOperations } from '@swarm/supabase';
+import { Swarm, CreateSwarmRequest } from '../lib/types';
+import { swarmOperations, workerOperations, logOperations } from '../lib/supabase-operations';
 import logger from '../services/logger';
 import { FlyService } from '../services/fly.service';
 import { telemetryService } from '../services/telemetry.service';
@@ -207,9 +207,7 @@ router.post('/', async (req, res) => {
       await telemetryService.trackSwarmDeployment(swarm.id, '', false, error);
       
       // Complete operation tracking with error
-      await swarmHooks.onSwarmOperationComplete(operationId, false, {
-        swarmId: swarm.id
-      }, error as Error);
+      // Note: swarmHooks was removed - this was unused code
     }
 
     // Get updated swarm

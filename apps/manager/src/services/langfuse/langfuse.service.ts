@@ -1,4 +1,5 @@
-import Langfuse, { LangfuseTraceClient } from 'langfuse';
+const Langfuse = require('langfuse').default;
+const { LangfuseTraceClient } = require('langfuse');
 import { EventEmitter } from 'events';
 import logger from '../logger';
 import { performance } from 'perf_hooks';
@@ -38,10 +39,10 @@ export interface LangfuseConfig {
 }
 
 export class LangfuseService extends EventEmitter {
-  private client: Langfuse | null = null;
+  private client: any | null = null;
   private traces: Map<string, LLMTrace> = new Map();
   private activeSpans: Map<string, LangfuseSpan> = new Map();
-  private activeTraces: Map<string, LangfuseTraceClient> = new Map();
+  private activeTraces: Map<string, any> = new Map();
   private performanceMarks: Map<string, number> = new Map();
   private costCalculator: CostCalculator;
   private enabled: boolean = false;

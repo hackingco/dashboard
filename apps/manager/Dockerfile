@@ -2,6 +2,9 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# Install dependencies needed to build native modules like better-sqlite3
+RUN apk add --no-cache libc6-compat python3 make g++
+
 # Copy package files - use the deploy version without workspace dependencies
 COPY package.deploy.json ./package.json
 

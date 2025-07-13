@@ -1,13 +1,12 @@
-import { getSupabaseServiceClient, swarmOperations, workerOperations, taskOperations, logOperations, metricsOperations, statsOperations } from '@swarm/supabase';
-import type { Database } from '@swarm/supabase';
+import { getSupabaseServiceClient, swarmOperations, workerOperations, taskOperations, logOperations, metricsOperations, statsOperations } from '../lib/supabase-operations';
 import { logger } from '../lib/logger';
 import { v4 as uuidv4 } from 'uuid';
 
-// Types
-type Swarm = Database['public']['Tables']['swarms']['Row'];
-type Worker = Database['public']['Tables']['workers']['Row'];
-type Task = Database['public']['Tables']['tasks']['Row'];
-type Log = Database['public']['Tables']['logs']['Row'];
+// Types - simplified without database types
+type Swarm = any;
+type Worker = any;
+type Task = any;
+type Log = any;
 
 export class SupabaseService {
   private static instance: SupabaseService;
@@ -57,7 +56,7 @@ export class SupabaseService {
 
   async updateSwarmStatus(swarmId: string, status: string, error?: string): Promise<Swarm> {
     try {
-      const updates: Database['public']['Tables']['swarms']['Update'] = {
+      const updates: any = {
         status,
         updated_at: new Date().toISOString(),
       };

@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
+import path from 'path'
 import { config } from 'dotenv'
 import { createBullBoard } from '@bull-board/api'
 import { ExpressAdapter } from '@bull-board/express'
@@ -26,7 +27,41 @@ const PORT = process.env.PORT || 8080
 // Middleware
 app.use(helmet())
 app.use(cors({
-  origin: process.env.DASHBOARD_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) return callback(null, true)
+    
+    const allowedOrigins = [
+      process.env.DASHBOARD_URL || 'http://localhost:3000',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'https://admin-dashboard-ovj3bt2gz-hackingco.vercel.app',
+      'https://admin-dashboard-5otb7nvz5-hackingco.vercel.app',
+      'https://admin-dashboard-r2axwm3fl-hackingco.vercel.app',
+      'https://admin-dashboard-l0e1w6ivz-hackingco.vercel.app',
+      'https://dist-d4ex7zt2q-hackingco.vercel.app',
+      'https://dist-cqq7lpfmg-hackingco.vercel.app',
+      // Add pattern matching for Vercel preview deployments
+      /^https:\/\/admin-dashboard-.*-hackingco\.vercel\.app$/,
+      /^https:\/\/dist-.*-hackingco\.vercel\.app$/,
+      // Add any other allowed origins here
+    ]
+    
+    // Check exact matches first
+    if (allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return allowed === origin
+      } else if (allowed instanceof RegExp) {
+        return allowed.test(origin)
+      }
+      return false
+    })) {
+      callback(null, true)
+    } else {
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
   credentials: true,
 }))
 app.use(express.json())
@@ -49,6 +84,19 @@ app.use('/api/workers', workerRouter)
 app.use('/api/tasks', taskRouter)
 app.use('/api/telemetry', telemetryRouter)
 app.use('/admin/queues', serverAdapter.getRouter())
+
+// Serve admin dashboard as static files
+app.use('/dashboard', express.static(path.join(__dirname, '../dashboard-dist')))
+
+// Serve dashboard at root with fallback to index.html for SPA routing
+app.use(express.static(path.join(__dirname, '../dashboard-dist')))
+app.get('*', (req, res) => {
+  if (!req.path.startsWith('/api') && !req.path.startsWith('/admin') && !req.path.startsWith('/health')) {
+    res.sendFile(path.join(__dirname, '../dashboard-dist/index.html'))
+  } else {
+    res.status(404).json({ error: 'API endpoint not found' })
+  }
+})
 
 // Error handling
 app.use(errorHandler)

@@ -1,7 +1,7 @@
 import logger from './logger';
 import { EventEmitter } from 'events';
 import { performance } from 'perf_hooks';
-import { trustGraphService } from './trustgraph';
+import { trustGraphService, TrustGraphNode, TrustGraphEdge } from './trustgraph';
 import { langfuseService } from './langfuse';
 
 interface LangfuseSpan {
@@ -23,20 +23,6 @@ interface PerformanceMetric {
   unit: string;
   timestamp: Date;
   tags?: Record<string, string>;
-}
-
-interface TrustGraphNode {
-  id: string;
-  type: string;
-  label: string;
-  metadata?: Record<string, any>;
-}
-
-interface TrustGraphEdge {
-  source: string;
-  target: string;
-  label: string;
-  metadata?: Record<string, any>;
 }
 
 export class TelemetryService extends EventEmitter {
@@ -83,7 +69,10 @@ export class TelemetryService extends EventEmitter {
 
   // TrustGraph Methods (delegated to trustGraphService)
   async emitNode(node: TrustGraphNode): Promise<void> {
-    await trustGraphService.createNode(node);
+    await trustGraphService.createNode({
+      ...node,
+      type: node.type as 'swarm' | 'worker' | 'task' | 'api' | 'dependency'
+    });
   }
 
   async emitEdge(edge: TrustGraphEdge): Promise<void> {
