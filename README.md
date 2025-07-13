@@ -6,7 +6,7 @@ A distributed swarm orchestration system built on Fly.io infrastructure with col
 
 The system consists of three main components:
 
-### 1. Dashboard (admin.hacking.co)
+### 1. Dashboard
 - React/Next.js frontend with Tailwind CSS
 - Real-time swarm monitoring and metrics
 - Worker management interface
