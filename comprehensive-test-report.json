@@ -1,0 +1,81 @@
+{
+  "startTime": 1752398379169,
+  "scenarios": [
+    {
+      "name": "Swarm Initialization",
+      "status": "PASS",
+      "timestamp": 1752398382676,
+      "details": {
+        "swarmInit": true
+      }
+    },
+    {
+      "name": "Hook Interceptors",
+      "status": "PASS",
+      "timestamp": 1752398390740,
+      "details": {
+        "passedHooks": 3,
+        "totalHooks": 3
+      }
+    },
+    {
+      "name": "Multi-Agent Coordination",
+      "status": "PASS",
+      "timestamp": 1752398425728,
+      "details": {
+        "coordinatedAgents": 4,
+        "totalAgents": 4
+      }
+    },
+    {
+      "name": "Error Handling",
+      "status": "PASS",
+      "timestamp": 1752398430609,
+      "details": {
+        "errorsCaught": 1,
+        "expectedErrors": 2
+      }
+    },
+    {
+      "name": "Performance Metrics",
+      "status": "PASS",
+      "timestamp": 1752398455579,
+      "details": {
+        "totalOperations": 10,
+        "successfulOperations": 10,
+        "totalTime": 24970,
+        "averageTime": 2497,
+        "throughput": "0.40 ops/sec"
+      }
+    },
+    {
+      "name": "Memory Database",
+      "status": "PASS",
+      "timestamp": 1752398460836,
+      "details": {
+        "databaseExists": true,
+        "databaseSize": 499712,
+        "successfulOperations": 2,
+        "totalOperations": 2
+      }
+    },
+    {
+      "name": "Session Management",
+      "status": "PASS",
+      "timestamp": 1752398466286,
+      "details": {
+        "sessionId": "test-session-1752398460836",
+        "successfulOperations": 2,
+        "totalOperations": 2
+      }
+    }
+  ],
+  "metrics": {
+    "totalTests": 7,
+    "passed": 7,
+    "failed": 0,
+    "warnings": 0
+  },
+  "endTime": 1752398466286,
+  "duration": 87117
+}
