@@ -343,7 +343,7 @@ export class SupabaseRealtimeService extends EventEmitter {
           {
             delta,
             swarmId: delta.swarm_id,
-            correlationId: newRecord.langfuse_trace_id || delta.correlation_id,
+            correlationId: newRecord.langfuse_trace_id || (delta as any).correlation_id,
             timestamp: delta.timestamp
           }
         );

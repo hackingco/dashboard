@@ -36,7 +36,7 @@ async function testLangfuseTracing() {
         console.log('⚠️  No apps found to test machine operations');
       }
     } catch (error) {
-      console.log(`❌ Expected error (traced): ${error.message.substring(0, 100)}...`);
+      console.log(`❌ Expected error (traced): ${error instanceof Error ? error.message.substring(0, 100) : 'Unknown error'}...`);
     }
     
     // Test 3: Test the tracer directly
@@ -75,7 +75,7 @@ async function testLangfuseTracing() {
         }
       );
     } catch (error) {
-      console.log(`✅ Success: Error correctly traced and re-thrown: ${error.message}`);
+      console.log(`✅ Success: Error correctly traced and re-thrown: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
     
     console.log('\n🎉 All tracing tests completed successfully!');

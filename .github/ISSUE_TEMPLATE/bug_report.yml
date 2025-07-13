@@ -1,0 +1,135 @@
+name: 🐛 Bug Report
+description: Create a report to help us improve
+title: "[BUG] "
+labels: ["bug", "triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Please provide as much detail as possible.
+
+  - type: checkboxes
+    id: preliminary-checks
+    attributes:
+      label: Preliminary Checks
+      description: Please confirm you have done the following
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I have read the contributing guidelines
+          required: true
+        - label: This issue is related to the Hive Mind platform codebase
+          required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      options:
+        - Dashboard (Frontend)
+        - Manager (Coordination Service)
+        - Worker (Worker Nodes)
+        - Claude Flow (Core Package)
+        - Shared Utilities
+        - Infrastructure/Deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this bug?
+      options:
+        - Critical (System unusable, data loss)
+        - High (Major feature broken)
+        - Medium (Feature partially working)
+        - Low (Minor issue, workaround available)
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is
+      placeholder: Describe the bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: A clear description of what you expected to happen
+      placeholder: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: What actually happened instead
+      placeholder: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: error-logs
+    attributes:
+      label: Error Messages/Logs
+      description: If applicable, add error messages or log output
+      render: shell
+      placeholder: Paste error messages or logs here...
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please provide information about your environment
+      value: |
+        - OS: [e.g., macOS 13.1, Ubuntu 22.04, Windows 11]
+        - Browser: [e.g., Chrome 108, Firefox 107, Safari 16]
+        - Node.js version: [e.g., 18.12.0]
+        - pnpm version: [e.g., 8.10.0]
+        - Platform version: [e.g., 2.1.0]
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or information about the problem
+      placeholder: Any additional information that might be helpful...
+
+  - type: dropdown
+    id: help-wanted
+    attributes:
+      label: Are you willing to submit a PR?
+      description: Would you be willing to help fix this issue?
+      options:
+        - "Yes, I can submit a PR"
+        - "Yes, with guidance"
+        - "No, I need someone else to fix it"
+    validations:
+      required: false

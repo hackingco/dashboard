@@ -647,7 +647,7 @@ CMD ["node", "src/index.js"]
         checks: [{
           name: 'health_check',
           status: 'error',
-          output: error.message
+          output: error instanceof Error ? error.message : 'Unknown error'
         }]
       };
     }

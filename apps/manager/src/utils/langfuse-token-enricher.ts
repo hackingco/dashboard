@@ -48,7 +48,7 @@ export class LangfuseTokenEnricher {
 
   constructor() {
     this.tokenEstimator = new TokenEstimator({
-      strategy: 'hybrid',
+      strategy: 'tiktoken' as any,
       enableCaching: true,
       maxCacheSize: 2000
     });
@@ -95,7 +95,7 @@ export class LangfuseTokenEnricher {
         : 0;
 
       // Calculate efficiency metrics
-      const efficiency = this.calculateEfficiency(input + output, tokens.total);
+      const efficiency = this.calculateEfficiency(input + output, tokens.total || 0);
 
       // Performance metrics
       const estimationTimeMs = performance.now() - startTime;

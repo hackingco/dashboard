@@ -10,8 +10,13 @@
     "lint": "eslint src --ext .ts",
     "test": "vitest run",
     "test:watch": "vitest watch",
+    "test:unit": "vitest run",
     "test:integration": "RUN_INTEGRATION_TESTS=true vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:coverage": "vitest run --coverage",
+    "test:smoke:staging": "vitest run --config vitest.smoke.config.ts --reporter=verbose",
+    "test:smoke:production": "vitest run --config vitest.smoke.config.ts --reporter=verbose",
+    "format:check": "prettier --check .",
     "deploy": "fly deploy"
   },
   "dependencies": {
@@ -47,6 +52,7 @@
     "@typescript-eslint/eslint-plugin": "^6.13.1",
     "@typescript-eslint/parser": "^6.13.1",
     "eslint": "^8.54.0",
+    "prettier": "^3.6.2",
     "tsx": "^4.6.2",
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"

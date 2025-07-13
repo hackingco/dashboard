@@ -151,6 +151,29 @@ export const workerOperations = {
     if (error) throw error;
   },
 
+  async update(workerId: string, data: any) {
+    const client = getSupabaseClient();
+    const { data: worker, error } = await client
+      .from('workers')
+      .update(data)
+      .eq('id', workerId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return worker;
+  },
+
+  async delete(workerId: string) {
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('workers')
+      .delete()
+      .eq('id', workerId);
+    
+    if (error) throw error;
+  },
+
   // Real-time subscription for workers
   subscribeToSwarm(swarmId: string, callback: (payload: any) => void) {
     const client = getSupabaseClient();
