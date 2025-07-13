@@ -52,7 +52,7 @@ SUPABASE_URL=your-supabase-url
 SUPABASE_SERVICE_KEY=your-supabase-service-key
 REDIS_HOST=your-redis-host
 REDIS_PORT=6379
-DASHBOARD_URL=https://admin.hacking.co
+DASHBOARD_URL=https://hacking.co
 ```
 
 #### Worker (.env)
