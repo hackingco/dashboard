@@ -1,9 +1,39 @@
 import WebSocket from 'ws';
 import jwt from 'jsonwebtoken';
-import logger from './logger';
+import { logger } from '../lib/logger';
 import { trustGraphService } from './trustgraph/trustgraph.service';
 import { v4 as uuidv4 } from 'uuid';
-import { WebSocketMessage, WebSocketMachineUpdate } from '@swarm/shared-types';
+// TODO: Re-enable when @swarm/shared-types package is available
+// import { WebSocketMessage, WebSocketMachineUpdate } from '@swarm/shared-types';
+
+// Temporary type definitions
+export interface WebSocketMessage {
+  type: string;
+  swarmId?: string;
+  status?: string;
+  data?: any;
+  correlationId?: string;
+  timestamp?: string;
+  metrics?: any;
+  appName?: string;
+  machineId?: string;
+  level?: string;
+  message?: string;
+  // Add missing properties for compatibility
+  count?: number;
+  [key: string]: any; // Allow additional properties
+}
+
+export interface WebSocketMachineUpdate extends WebSocketMessage {
+  type: 'machine_update';
+  appName?: string; // Make optional to match usage
+  machineId: string;
+  status: string;
+  cpus?: number; // Add missing cpus property
+  memory?: any;
+  region?: any;
+  privateIp?: any;
+}
 
 export interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;

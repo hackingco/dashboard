@@ -17,6 +17,41 @@
       "dependsOn": ["build"],
       "inputs": ["src/**/*.tsx", "src/**/*.ts", "test/**/*.ts", "test/**/*.tsx"]
     },
+    "test:unit": {
+      "dependsOn": ["build"],
+      "inputs": ["src/**/*.tsx", "src/**/*.ts", "test/**/*.ts", "test/**/*.tsx"],
+      "outputs": ["coverage/**"]
+    },
+    "test:integration": {
+      "dependsOn": ["build"],
+      "inputs": ["src/**/*.tsx", "src/**/*.ts", "test/**/*.ts", "test/**/*.tsx"],
+      "outputs": ["coverage/**"]
+    },
+    "test:e2e": {
+      "dependsOn": ["build"],
+      "inputs": ["src/**/*.tsx", "src/**/*.ts", "test/**/*.ts", "test/**/*.tsx", "e2e/**/*.ts"],
+      "outputs": ["playwright-report/**", "test-results/**"]
+    },
+    "test:coverage": {
+      "dependsOn": ["build"],
+      "inputs": ["src/**/*.tsx", "src/**/*.ts", "test/**/*.ts", "test/**/*.tsx"],
+      "outputs": ["coverage/**"]
+    },
+    "test:smoke:staging": {
+      "cache": false,
+      "inputs": ["test/**/*.ts", "test/**/*.tsx"]
+    },
+    "test:smoke:production": {
+      "cache": false,
+      "inputs": ["test/**/*.ts", "test/**/*.tsx"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**/*.tsx", "src/**/*.ts"]
+    },
+    "format:check": {
+      "inputs": ["src/**/*.tsx", "src/**/*.ts", "*.json", "*.md"]
+    },
     "deploy": {
       "dependsOn": ["build"],
       "cache": false

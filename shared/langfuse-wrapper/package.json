@@ -1,0 +1,51 @@
+{
+  "name": "@swarm/langfuse-wrapper",
+  "version": "1.0.0",
+  "description": "Langfuse integration wrapper for Swarm orchestration with auto-registration and memory coordination",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration", 
+    "test:performance": "jest tests/performance",
+    "test:coverage": "jest --coverage",
+    "test:comprehensive": "./tests/run-comprehensive-tests.sh",
+    "test:watch": "jest --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests --ext .ts",
+    "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts'",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "langfuse": "^3.0.0",
+    "better-sqlite3": "^11.6.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.0.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "langfuse",
+    "observability",
+    "tracing",
+    "swarm",
+    "orchestration",
+    "claude-flow"
+  ],
+  "author": "Swarm Orchestrator Team",
+  "license": "MIT"
+}

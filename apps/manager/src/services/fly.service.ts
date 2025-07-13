@@ -1,6 +1,6 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import logger from './logger';
+import { logger } from '../lib/logger';
 import { Swarm, Worker } from '@swarm/types';
 import { trustGraphService } from './trustgraph/trustgraph.service';
 import { langfuseService } from './langfuse/langfuse.service';
@@ -647,7 +647,7 @@ CMD ["node", "src/index.js"]
         checks: [{
           name: 'health_check',
           status: 'error',
-          output: error.message
+          output: error instanceof Error ? error.message : 'Unknown error'
         }]
       };
     }
@@ -698,4 +698,33 @@ CMD ["node", "src/index.js"]
       throw error;
     }
   }
+
+  // Missing methods from the old flyService exports
+  async getMachines(appName: string): Promise<any[]> {
+    return this.listMachines(appName);
+  }
+
+  async getReleases(appName: string): Promise<any[]> {
+    try {
+      const releases = await this.flyApiRequest('GET', `/apps/${appName}/releases`) as any[];
+      logger.info(`Retrieved releases for app: ${appName}`, { count: releases.length });
+      return releases;
+    } catch (error) {
+      logger.error('Failed to get releases', { appName, error });
+      throw error;
+    }
+  }
+
+  async rollbackToRelease(appName: string, version: string): Promise<void> {
+    try {
+      await this.flyApiRequest('POST', `/apps/${appName}/releases`, { version }, `rollback-${appName}-${version}`);
+      logger.info(`Rolled back app ${appName} to version ${version}`);
+    } catch (error) {
+      logger.error('Failed to rollback to release', { appName, version, error });
+      throw error;
+    }
+  }
 }
+
+// Export default instance for backward compatibility
+export const flyService = new FlyService();
