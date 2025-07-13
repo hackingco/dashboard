@@ -1,4 +1,4 @@
-import { langfuseService } from '../services/observability/langfuse.service';
+import { langfuseService } from '../services/langfuse/langfuse.service';
 import logger from '../services/logger';
 
 interface TracerOptions {

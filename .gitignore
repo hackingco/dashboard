@@ -28,6 +28,9 @@ lerna-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env.production
+.env.preview
+.env.staging
 
 # IDE
 .vscode/
@@ -40,8 +43,18 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 
-# Fly
+# Fly deployment
 fly.toml.bak
+fly-auth-env.sh
+*.fly.env
+
+# Vercel deployment
+.vercel/
+vercel.json.bak
+
+# Docker
+Dockerfile.dev.bak
+docker-compose.override.yml
 
 # TypeScript
 *.tsbuildinfo
@@ -52,3 +65,47 @@ logs/
 
 # Redis dump
 dump.rdb
+
+# Database files
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Swarm and AI memory files
+.swarm/
+.hive-mind/
+*.memory.db
+
+# Temporary and cache files
+tmp/
+temp/
+.tmp/
+.temp/
+*.tmp
+*.cache
+.cache/
+
+# Script output and logs
+scripts/output/
+scripts/logs/
+scripts/*.log
+
+# Test artifacts
+test-results/
+test-output/
+coverage-reports/
+jest-cache/
+
+# Documentation generation
+docs/generated/
+*.pdf.bak
+*.md.bak
+
+# Security and secrets
+secrets/
+private/
+*.key
+*.pem.bak
+auth-tokens.json

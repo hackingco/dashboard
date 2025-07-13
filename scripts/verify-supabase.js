@@ -289,7 +289,7 @@ async function runVerification() {
     print('\nPlease fix the issues above and run verification again.', colors.yellow);
     print('\nNeed help? Check:', colors.bright);
     print('- docs/SUPABASE_VISUAL_GUIDE.md', colors.cyan);
-    print('- SUPABASE_SETUP.md', colors.cyan);
+    print('- docs/swarm-memory/operations/SUPABASE_SETUP.md', colors.cyan);
   }
   
   // Additional diagnostics

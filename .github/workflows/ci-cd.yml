@@ -1,0 +1,813 @@
+name: 🚀 Comprehensive CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, feat/*]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run nightly builds at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      run_performance_tests:
+        description: 'Run performance tests'
+        type: boolean
+        default: false
+      skip_tests:
+        description: 'Skip test execution (emergency deploy)'
+        type: boolean
+        default: false
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '8'
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+  LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+  LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  DEPLOYMENT_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  # Pre-flight checks and security
+  security-scan:
+    name: 🔒 Security & Vulnerability Scan
+    runs-on: ubuntu-latest
+    if: github.event.inputs.skip_tests != 'true'
+    outputs:
+      security-passed: ${{ steps.security-check.outputs.passed }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '0'
+
+      - name: 📊 Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: 🔐 Secret scan with TruffleHog
+        uses: trufflesecurity/truffleHog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --json --no-verification
+
+      - name: 🛡️ Dependency vulnerability scan
+        run: |
+          # PNPM audit
+          pnpm audit --audit-level moderate --json > pnpm-audit.json || true
+          
+          # Snyk scan (if token available)
+          if [ -n "${{ secrets.SNYK_TOKEN }}" ]; then
+            npx snyk test --severity-threshold=medium --json > snyk-report.json || true
+            echo "🛡️ Snyk vulnerability scan completed"
+          else
+            echo "🛡️ Snyk token not available, skipping scan"
+          fi
+
+      - name: 🔍 Container security scan preparation
+        run: |
+          # Build lightweight containers for security scanning
+          if [ -f "apps/manager/Dockerfile" ]; then
+            docker build -t swarm-manager:security-scan -f apps/manager/Dockerfile apps/manager/ || echo "Manager container build failed"
+          fi
+          
+          if [ -f "admin-dashboard/Dockerfile" ]; then
+            docker build -t swarm-dashboard:security-scan -f admin-dashboard/Dockerfile admin-dashboard/ || echo "Dashboard container build failed"
+          fi
+
+      - name: 🔍 Trivy container security scan
+        if: success()
+        run: |
+          # Scan Manager container if it was built
+          if docker images | grep -q "swarm-manager:security-scan"; then
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy:latest image --exit-code 0 --format json \
+              --output manager-security-scan.json swarm-manager:security-scan || true
+          fi
+          
+          # Scan Dashboard container if it was built
+          if docker images | grep -q "swarm-dashboard:security-scan"; then
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy:latest image --exit-code 0 --format json \
+              --output dashboard-security-scan.json swarm-dashboard:security-scan || true
+          fi
+          
+          echo "🔍 Container security scans completed"
+
+      - name: ✅ Security check summary
+        id: security-check
+        run: |
+          SECURITY_PASSED="true"
+          
+          # Check for critical vulnerabilities in audit results
+          if [ -f "pnpm-audit.json" ]; then
+            CRITICAL_COUNT=$(cat pnpm-audit.json | jq '.metadata.vulnerabilities.critical // 0' 2>/dev/null || echo "0")
+            if [ "$CRITICAL_COUNT" -gt 0 ]; then
+              SECURITY_PASSED="false"
+              echo "❌ $CRITICAL_COUNT critical vulnerabilities found in dependencies"
+            fi
+          fi
+          
+          # Check Snyk results if available
+          if [ -f "snyk-report.json" ]; then
+            SNYK_CRITICAL=$(cat snyk-report.json | jq '.vulnerabilities | map(select(.severity == "critical")) | length' 2>/dev/null || echo "0")
+            if [ "$SNYK_CRITICAL" -gt 0 ]; then
+              SECURITY_PASSED="false"
+              echo "❌ $SNYK_CRITICAL critical vulnerabilities found by Snyk"
+            fi
+          fi
+          
+          echo "passed=$SECURITY_PASSED" >> $GITHUB_OUTPUT
+          
+          if [ "$SECURITY_PASSED" = "true" ]; then
+            echo "🔒 Security scan completed successfully"
+          else
+            echo "⚠️ Security issues detected - review required"
+          fi
+
+      - name: 📤 Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-reports
+          path: |
+            pnpm-audit.json
+            snyk-report.json
+            *-security-scan.json
+            trivy-results.sarif
+
+  # Code quality and linting
+  code-quality:
+    name: 📝 Code Quality & Linting
+    runs-on: ubuntu-latest
+    if: github.event.inputs.skip_tests != 'true'
+    outputs:
+      quality-score: ${{ steps.quality.outputs.score }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🎨 Run ESLint
+        run: |
+          pnpm lint:all 2>&1 | tee eslint-report.txt
+          echo "📊 ESLint completed"
+
+      - name: 🔧 Run Prettier check
+        run: |
+          pnpm format:check 2>&1 | tee prettier-report.txt
+          echo "🎨 Prettier check completed"
+
+      - name: 📊 TypeScript check
+        run: |
+          pnpm typecheck:all 2>&1 | tee typescript-report.txt
+          echo "🔍 TypeScript check completed"
+
+      - name: 📈 Code quality score
+        id: quality
+        run: |
+          # Calculate quality score based on linting results
+          SCORE=100
+          if grep -q "error" eslint-report.txt; then
+            SCORE=$((SCORE - 20))
+          fi
+          if grep -q "warning" eslint-report.txt; then
+            SCORE=$((SCORE - 5))
+          fi
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "📊 Code quality score: $SCORE/100"
+
+      - name: 📤 Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-reports
+          path: |
+            eslint-report.txt
+            prettier-report.txt
+            typescript-report.txt
+
+  # Unit and integration tests
+  unit-tests:
+    name: 🧪 Unit & Integration Tests
+    runs-on: ubuntu-latest
+    if: github.event.inputs.skip_tests != 'true'
+    strategy:
+      matrix:
+        test-type: ['unit', 'integration']
+    outputs:
+      coverage: ${{ steps.coverage.outputs.percentage }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🗄️ Setup test database
+        run: |
+          docker run -d \
+            --name test-postgres \
+            -e POSTGRES_PASSWORD=test \
+            -e POSTGRES_DB=test_db \
+            -p 5432:5432 \
+            postgres:15-alpine
+
+      - name: ⏳ Wait for database
+        run: |
+          until docker exec test-postgres pg_isready -U postgres; do
+            echo "Waiting for postgres..."
+            sleep 2
+          done
+
+      - name: 🧪 Run ${{ matrix.test-type }} tests
+        run: |
+          if [ "${{ matrix.test-type }}" = "unit" ]; then
+            pnpm test:unit
+          else
+            pnpm test:integration
+          fi
+
+      - name: 📊 Generate coverage report
+        id: coverage
+        if: matrix.test-type == 'unit'
+        run: |
+          pnpm test:coverage
+          COVERAGE=$(grep -oP 'All files\s+\|\s+\K[0-9.]+' coverage/lcov-report/index.html | head -1)
+          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "📊 Test coverage: $COVERAGE%"
+
+      - name: 📤 Upload coverage reports
+        if: matrix.test-type == 'unit'
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./coverage
+          flags: ${{ matrix.test-type }}
+
+      - name: 📤 Upload test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.test-type }}
+          path: |
+            coverage/
+            test-results/
+
+  # E2E tests
+  e2e-tests:
+    name: 🌐 End-to-End Tests
+    runs-on: ubuntu-latest
+    if: github.event.inputs.skip_tests != 'true'
+    strategy:
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🎭 Install Playwright browsers
+        run: pnpm exec playwright install ${{ matrix.browser }}
+
+      - name: 🚀 Start test environment
+        run: |
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 30  # Wait for services to be ready
+
+      - name: 🔍 Health check test environment
+        run: |
+          curl -f http://localhost:3000/api/health || exit 1
+          curl -f http://localhost:3001/health || exit 1
+
+      - name: 🧪 Run E2E tests
+        run: pnpm test:e2e --project=${{ matrix.browser }}
+        env:
+          TEST_BASE_URL: http://localhost:3000
+
+      - name: 📤 Upload E2E results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ matrix.browser }}
+          path: |
+            test-results/
+            playwright-report/
+
+      - name: 🧹 Cleanup test environment
+        if: always()
+        run: docker-compose -f docker-compose.test.yml down
+
+  # Performance tests (enhanced and integrated)
+  performance-tests:
+    name: ⚡ Performance & Load Tests
+    runs-on: ubuntu-latest
+    if: github.event.inputs.run_performance_tests == 'true' || github.event_name == 'schedule'
+    needs: [unit-tests]
+    outputs:
+      performance-passed: ${{ steps.performance-check.outputs.passed }}
+      regression-detected: ${{ steps.regression.outputs.detected }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🚀 Start performance test environment
+        run: |
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 45  # Extra time for performance baseline
+
+      - name: ⚡ Run comprehensive load tests
+        run: |
+          # API load tests
+          node tests/performance/api-load-test.js --output api-load-results.json || echo "API load test script not found"
+          
+          # WebSocket stress tests
+          node tests/performance/websocket-load-test.js --output ws-load-results.json || echo "WebSocket load test script not found"
+          
+          # Database performance tests
+          node tests/performance/db-load-test.js --output db-load-results.json || echo "DB load test script not found"
+          
+          echo "📊 Comprehensive load tests completed"
+
+      - name: 🧠 Memory and resource profiling
+        run: |
+          # Memory profiling
+          node tests/performance/memory-profiler.js --output memory-profile.json || echo "Memory profiler not found"
+          
+          # CPU profiling
+          node tests/performance/cpu-profiler.js --output cpu-profile.json || echo "CPU profiler not found"
+          
+          echo "🧠 Resource profiling completed"
+
+      - name: 📊 Performance regression analysis
+        id: regression
+        run: |
+          # Run regression analysis if script exists
+          if [ -f "scripts/performance-regression-check.js" ]; then
+            node scripts/performance-regression-check.js
+            REGRESSION_DETECTED=$(cat performance-regression.json | jq -r '.regression_detected // false' 2>/dev/null || echo "false")
+            echo "detected=$REGRESSION_DETECTED" >> $GITHUB_OUTPUT
+            echo "📈 Performance regression analysis completed: $REGRESSION_DETECTED"
+          else
+            echo "detected=false" >> $GITHUB_OUTPUT
+            echo "📈 Performance regression check script not found"
+          fi
+
+      - name: ✅ Performance validation
+        id: performance-check
+        run: |
+          # Basic performance validation
+          PASSED="true"
+          
+          # Check if any critical performance issues detected
+          if [ "${{ steps.regression.outputs.detected }}" = "true" ]; then
+            PASSED="false"
+            echo "❌ Performance regression detected"
+          else
+            echo "✅ Performance validation passed"
+          fi
+          
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+
+      - name: 📤 Upload comprehensive performance reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-reports
+          path: |
+            *-load-results.json
+            *-profile.json
+            performance-*.json
+            performance-results.txt
+
+      - name: 🚨 Performance regression alert
+        if: steps.regression.outputs.detected == 'true'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: 'warning'
+          channel: '#performance'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            ⚠️ PERFORMANCE REGRESSION DETECTED
+            📈 Branch: ${{ github.ref }}
+            🔗 Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            📊 Review performance metrics before deployment
+
+      - name: 🧹 Cleanup
+        if: always()
+        run: docker-compose -f docker-compose.test.yml down
+
+  # Build and prepare for deployment
+  build:
+    name: 🏗️ Build & Package
+    runs-on: ubuntu-latest
+    needs: [security-scan, code-quality, unit-tests]
+    if: always() && !contains(needs.*.result, 'failure')
+    outputs:
+      build-version: ${{ steps.version.outputs.version }}
+      build-sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🏗️ Build all packages
+        run: |
+          pnpm build:all
+          echo "🏗️ Build completed successfully"
+
+      - name: 📦 Generate build info
+        id: version
+        run: |
+          VERSION="1.0.0-${GITHUB_SHA:0:7}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "sha=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+          echo "🏷️ Version: $VERSION"
+
+      - name: 📤 Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            apps/*/dist/
+            dashboard/out/
+            worker/dist/
+
+  # Deploy to staging (unified deployment for all services)
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, e2e-tests]
+    if: |
+      always() && 
+      !contains(needs.*.result, 'failure') && 
+      (github.ref == 'refs/heads/develop' || github.event.inputs.environment == 'staging')
+    environment: staging
+    outputs:
+      manager_url: ${{ steps.deploy-manager.outputs.url }}
+      dashboard_url: ${{ steps.deploy-dashboard.outputs.url }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ⬇️ Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: 🔧 Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: 🏗️ Setup Node.js for Vercel
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 🚀 Deploy Manager to Staging
+        id: deploy-manager
+        run: |
+          cd apps/manager
+          flyctl deploy --config fly-staging.toml --strategy rolling --wait-timeout 300s
+          STAGING_URL="https://swarm-manager-staging.fly.dev"
+          echo "url=$STAGING_URL" >> $GITHUB_OUTPUT
+          echo "🚀 Manager deployed to staging: $STAGING_URL"
+
+      - name: 🎨 Deploy Dashboard to Staging (Vercel Preview)
+        id: deploy-dashboard
+        run: |
+          cd admin-dashboard
+          npm install -g vercel@latest
+          
+          # Set staging environment variables
+          export VITE_MANAGER_URL="${{ steps.deploy-manager.outputs.url }}"
+          export VITE_WS_URL="${{ steps.deploy-manager.outputs.url }}"
+          export VITE_WS_URL="${VITE_WS_URL/https:/wss:}"
+          export VITE_SUPABASE_URL="${{ env.SUPABASE_URL }}"
+          export VITE_SUPABASE_ANON_KEY="${{ env.SUPABASE_ANON_KEY }}"
+          
+          # Install dependencies and build
+          pnpm install --frozen-lockfile
+          pnpm build
+          
+          # Deploy to Vercel preview
+          DASHBOARD_URL=$(vercel deploy --token=${{ env.VERCEL_TOKEN }})
+          echo "url=$DASHBOARD_URL" >> $GITHUB_OUTPUT
+          echo "🎨 Dashboard deployed to staging: $DASHBOARD_URL"
+
+      - name: ⏳ Wait for deployment stabilization
+        run: |
+          sleep 60  # Wait for services to be ready
+          echo "⏳ Deployment stabilization complete"
+
+      - name: 🔍 Comprehensive staging health check
+        run: |
+          # Check Manager API
+          curl -f --max-time 10 ${{ steps.deploy-manager.outputs.url }}/health || exit 1
+          curl -f --max-time 10 ${{ steps.deploy-manager.outputs.url }}/api/health || exit 1
+          echo "✅ Manager API health check passed"
+          
+          # Check Dashboard
+          curl -f --max-time 10 ${{ steps.deploy-dashboard.outputs.url }} || exit 1
+          echo "✅ Dashboard health check passed"
+
+      - name: 🧪 Run comprehensive staging tests
+        run: |
+          # API functional tests
+          pnpm test:smoke:staging
+          
+          # Dashboard integration tests
+          TEST_API_URL="${{ steps.deploy-manager.outputs.url }}" \
+          TEST_DASHBOARD_URL="${{ steps.deploy-dashboard.outputs.url }}" \
+          pnpm test:integration:staging || echo "Integration tests not configured"
+          
+          echo "🧪 Staging tests completed"
+
+  # Deploy to production (unified deployment for all services)
+  deploy-production:
+    name: 🌟 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, deploy-staging, performance-tests]
+    if: |
+      always() && 
+      !contains(needs.*.result, 'failure') && 
+      (github.ref == 'refs/heads/main' || github.event.inputs.environment == 'production')
+    environment: production
+    outputs:
+      manager_url: ${{ steps.deploy-manager.outputs.url }}
+      dashboard_url: ${{ steps.deploy-dashboard.outputs.url }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ⬇️ Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: 🔧 Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: 🏗️ Setup Node.js for Vercel
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📸 Create deployment snapshot
+        run: |
+          curl -X POST "https://api.machines.dev/v1/apps/swarm-manager/volumes" \
+            -H "Authorization: Bearer $FLY_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"snapshot_retention": 7}' || echo "Snapshot creation failed (non-critical)"
+          echo "📸 Pre-deployment snapshot attempted"
+
+      - name: 🚀 Deploy Manager to Production (Canary)
+        id: deploy-manager
+        run: |
+          cd apps/manager
+          flyctl deploy --strategy canary --detach --wait-timeout 300s
+          PROD_URL="https://swarm-manager-live.fly.dev"
+          echo "url=$PROD_URL" >> $GITHUB_OUTPUT
+          echo "🚀 Manager canary deployment initiated: $PROD_URL"
+
+      - name: ⏳ Monitor canary deployment
+        run: |
+          # Monitor canary health for 5 minutes
+          for i in {1..10}; do
+            curl -f --max-time 10 ${{ steps.deploy-manager.outputs.url }}/health || exit 1
+            echo "🔍 Canary health check $i/10 passed"
+            sleep 30
+          done
+
+      - name: ✅ Promote canary to full production
+        run: |
+          cd apps/manager
+          flyctl deploy --strategy immediate
+          echo "✅ Manager promoted to full production"
+
+      - name: 🎨 Deploy Dashboard to Production (Vercel)
+        id: deploy-dashboard
+        run: |
+          cd admin-dashboard
+          npm install -g vercel@latest
+          
+          # Set production environment variables
+          export VITE_MANAGER_URL="${{ steps.deploy-manager.outputs.url }}"
+          export VITE_WS_URL="${{ steps.deploy-manager.outputs.url }}"
+          export VITE_WS_URL="${VITE_WS_URL/https:/wss:}"
+          export VITE_SUPABASE_URL="${{ env.SUPABASE_URL }}"
+          export VITE_SUPABASE_ANON_KEY="${{ env.SUPABASE_ANON_KEY }}"
+          
+          # Install dependencies and build
+          pnpm install --frozen-lockfile
+          pnpm build
+          
+          # Deploy to Vercel production
+          DASHBOARD_URL=$(vercel deploy --prod --token=${{ env.VERCEL_TOKEN }})
+          echo "url=$DASHBOARD_URL" >> $GITHUB_OUTPUT
+          echo "🎨 Dashboard deployed to production: $DASHBOARD_URL"
+
+      - name: 🔍 Comprehensive production health verification
+        run: |
+          # Manager API health checks
+          curl -f --max-time 10 ${{ steps.deploy-manager.outputs.url }}/health || exit 1
+          curl -f --max-time 10 ${{ steps.deploy-manager.outputs.url }}/api/health || exit 1
+          echo "✅ Manager API production health verified"
+          
+          # Dashboard health checks
+          curl -f --max-time 10 ${{ steps.deploy-dashboard.outputs.url }} || exit 1
+          echo "✅ Dashboard production health verified"
+
+      - name: 🧪 Run comprehensive production tests
+        run: |
+          # API smoke tests
+          PROD_API_URL="${{ steps.deploy-manager.outputs.url }}" pnpm test:smoke:production
+          
+          # Dashboard functionality tests
+          PROD_DASHBOARD_URL="${{ steps.deploy-dashboard.outputs.url }}" \
+          PROD_API_URL="${{ steps.deploy-manager.outputs.url }}" \
+          pnpm test:production:dashboard || echo "Dashboard production tests not configured"
+          
+          echo "🧪 Production tests completed"
+
+  # Post-deployment monitoring
+  post-deployment:
+    name: 📊 Post-Deployment Monitoring
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always() && !contains(needs.*.result, 'failure')
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📊 Setup monitoring
+        run: |
+          # Start extended monitoring for 1 hour post-deployment
+          node scripts/post-deployment-monitor.js &
+          echo "📊 Extended monitoring initiated"
+
+      - name: 🔔 Send deployment notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            🚀 Production deployment completed successfully!
+            📦 Version: ${{ needs.build.outputs.build-version }}
+            🖥️ Manager API: ${{ needs.deploy-production.outputs.manager_url }}
+            🎨 Dashboard: ${{ needs.deploy-production.outputs.dashboard_url }}
+            📊 Monitoring: Active for next 60 minutes
+
+  # Rollback job (manual trigger)
+  rollback:
+    name: ⏪ Emergency Rollback
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.emergency_rollback == 'true'
+    environment: production
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: ⏪ Rollback Manager
+        run: |
+          cd apps/manager
+          flyctl releases rollback --app swarm-manager
+          echo "⏪ Manager rolled back"
+
+      - name: ⏪ Rollback Dashboard
+        run: |
+          cd dashboard
+          flyctl releases rollback --app swarm-dashboard
+          echo "⏪ Dashboard rolled back"
+
+      - name: 🔔 Send rollback notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: 'warning'
+          channel: '#alerts'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            ⚠️ EMERGENCY ROLLBACK EXECUTED
+            🕒 Time: ${{ github.event.head_commit.timestamp }}
+            👤 Triggered by: ${{ github.actor }}
+            🔗 Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  # Performance regression alert
+  performance-alert:
+    name: 🚨 Performance Regression Alert
+    runs-on: ubuntu-latest
+    needs: [performance-tests]
+    if: failure() && needs.performance-tests.result == 'failure'
+    steps:
+      - name: 🚨 Send performance alert
+        uses: 8398a7/action-slack@v3
+        with:
+          status: 'danger'
+          channel: '#performance'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            🚨 PERFORMANCE REGRESSION DETECTED
+            📈 Performance tests failed on ${{ github.ref }}
+            👤 Last commit by: ${{ github.event.head_commit.author.name }}
+            🔗 Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

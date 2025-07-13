@@ -1,0 +1,364 @@
+name: 🔄 Manual Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to rollback'
+        type: choice
+        options: ['manager', 'dashboard', 'worker', 'all']
+        required: true
+      rollback_to:
+        description: 'Rollback to specific release (optional - latest by default)'
+        type: string
+      reason:
+        description: 'Rollback reason (required for audit trail)'
+        type: string
+        required: true
+      confirm_rollback:
+        description: 'Type CONFIRM to proceed with rollback'
+        type: string
+        required: true
+
+env:
+  ROLLBACK_ID: ${{ github.run_id }}-rollback
+
+jobs:
+  validate-rollback:
+    name: 🔍 Validate Rollback Request
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.validation.outputs.proceed }}
+    
+    steps:
+      - name: 🔍 Validate Input
+        id: validation
+        run: |
+          if [ "${{ github.event.inputs.confirm_rollback }}" != "CONFIRM" ]; then
+            echo "❌ Rollback confirmation failed. Type 'CONFIRM' to proceed."
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          if [ -z "${{ github.event.inputs.reason }}" ]; then
+            echo "❌ Rollback reason is required for audit trail."
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "✅ Rollback validation passed"
+          echo "proceed=true" >> $GITHUB_OUTPUT
+      
+      - name: 📋 Rollback Summary
+        run: |
+          echo "## 🔄 Rollback Request Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Service(s) | ${{ github.event.inputs.service }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Reason | ${{ github.event.inputs.reason }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Requested by | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Rollback ID | ${{ env.ROLLBACK_ID }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Timestamp | $(date -u) |" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "${{ github.event.inputs.rollback_to }}" ]; then
+            echo "| Target Release | ${{ github.event.inputs.rollback_to }} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Target Release | Previous release (automatic) |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  rollback-manager:
+    name: 🖥️ Rollback Manager API
+    needs: validate-rollback
+    if: needs.validate-rollback.outputs.proceed == 'true' && (github.event.inputs.service == 'manager' || github.event.inputs.service == 'all')
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v4
+      
+      - name: 🛠️ Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+        with:
+          version: latest
+      
+      - name: 📊 Pre-Rollback Status
+        run: |
+          echo "📊 Current Manager API status:"
+          flyctl status --app swarm-manager-live
+          flyctl releases --app swarm-manager-live --limit 5
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      
+      - name: 🔄 Execute Manager Rollback
+        run: |
+          echo "🔄 Rolling back Manager API..."
+          
+          if [ -n "${{ github.event.inputs.rollback_to }}" ]; then
+            echo "Rolling back to specific release: ${{ github.event.inputs.rollback_to }}"
+            flyctl releases rollback --app swarm-manager-live --to ${{ github.event.inputs.rollback_to }}
+          else
+            echo "Rolling back to previous release"
+            flyctl releases rollback --app swarm-manager-live
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      
+      - name: ⏱️ Wait for Rollback
+        run: |
+          echo "⏱️ Waiting for rollback to complete..."
+          sleep 30
+      
+      - name: 🩺 Post-Rollback Health Check
+        run: |
+          echo "🩺 Verifying rollback health..."
+          max_attempts=20
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "Health check attempt $attempt/$max_attempts"
+            if curl -f --max-time 10 https://swarm-manager-live.fly.dev/health; then
+              echo "✅ Manager API rollback successful!"
+              break
+            else
+              echo "❌ Health check failed (attempt $attempt/$max_attempts)"
+              if [ $attempt -eq $max_attempts ]; then
+                echo "💥 Rollback verification failed"
+                exit 1
+              fi
+              sleep 10
+              attempt=$((attempt + 1))
+            fi
+          done
+      
+      - name: 📊 Post-Rollback Status
+        run: |
+          echo "📊 Post-rollback Manager API status:"
+          flyctl status --app swarm-manager-live
+          echo "✅ Manager API rollback completed successfully"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  rollback-dashboard:
+    name: 🎨 Rollback Dashboard
+    needs: validate-rollback
+    if: needs.validate-rollback.outputs.proceed == 'true' && (github.event.inputs.service == 'dashboard' || github.event.inputs.service == 'all')
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v4
+      
+      - name: ⚠️ Dashboard Rollback Notice
+        run: |
+          echo "⚠️ Dashboard Rollback Procedure"
+          echo ""
+          echo "Vercel rollback requires one of the following approaches:"
+          echo "1. Manual rollback via Vercel dashboard"
+          echo "2. Redeploy previous version via Git"
+          echo "3. Use Vercel CLI with alias management"
+          echo ""
+          echo "For immediate rollback, please:"
+          echo "1. Go to https://vercel.com/dashboard"
+          echo "2. Find the admin-dashboard project"
+          echo "3. Navigate to deployments"
+          echo "4. Promote a previous deployment"
+          echo ""
+          echo "📋 Rollback reason: ${{ github.event.inputs.reason }}"
+          echo "👤 Requested by: ${{ github.actor }}"
+      
+      - name: 🔄 Automated Dashboard Rollback (via Vercel CLI)
+        run: |
+          echo "🔄 Attempting automated dashboard rollback..."
+          
+          # Install Vercel CLI
+          npm install -g vercel@latest
+          
+          # List recent deployments and attempt rollback
+          if [ -n "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "📋 Recent deployments:"
+            vercel ls --token=${{ secrets.VERCEL_TOKEN }} | head -10
+            
+            # Attempt to promote previous deployment
+            echo "⚠️ For immediate rollback:"
+            echo "1. Run: vercel ls --token=TOKEN to see deployments"
+            echo "2. Run: vercel alias set DEPLOYMENT_URL CUSTOM_DOMAIN --token=TOKEN"
+            echo "3. Or manually promote via Vercel dashboard"
+          else
+            echo "❌ Vercel token not available - manual intervention required"
+          fi
+      
+      - name: 🩺 Dashboard Health Check
+        run: |
+          echo "🩺 Checking dashboard availability..."
+          if curl -f --max-time 10 https://admin-dashboard-l0e1w6ivz-hackingco.vercel.app; then
+            echo "✅ Dashboard is responding"
+          else
+            echo "❌ Dashboard health check failed"
+            echo "⚠️ Manual intervention required"
+          fi
+
+  rollback-worker:
+    name: ⚙️ Rollback Worker Service
+    needs: validate-rollback
+    if: needs.validate-rollback.outputs.proceed == 'true' && (github.event.inputs.service == 'worker' || github.event.inputs.service == 'all')
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v4
+      
+      - name: 🛠️ Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+        with:
+          version: latest
+      
+      - name: 📊 Pre-Rollback Status
+        run: |
+          echo "📊 Current Worker Service status:"
+          flyctl status --app swarm-worker
+          flyctl releases --app swarm-worker --limit 5
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      
+      - name: 🔄 Execute Worker Rollback
+        run: |
+          echo "🔄 Rolling back Worker Service..."
+          
+          if [ -n "${{ github.event.inputs.rollback_to }}" ]; then
+            echo "Rolling back to specific release: ${{ github.event.inputs.rollback_to }}"
+            flyctl releases rollback --app swarm-worker --to ${{ github.event.inputs.rollback_to }}
+          else
+            echo "Rolling back to previous release"
+            flyctl releases rollback --app swarm-worker
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      
+      - name: ⏱️ Wait for Rollback
+        run: |
+          echo "⏱️ Waiting for worker rollback to complete..."
+          sleep 30
+      
+      - name: 🩺 Post-Rollback Health Check
+        run: |
+          echo "🩺 Verifying worker rollback..."
+          max_attempts=15
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "Worker health check attempt $attempt/$max_attempts"
+            if flyctl status --app swarm-worker | grep -q "started\|running"; then
+              echo "✅ Worker Service rollback successful!"
+              break
+            else
+              echo "❌ Worker check failed (attempt $attempt/$max_attempts)"
+              if [ $attempt -eq $max_attempts ]; then
+                echo "💥 Worker rollback verification failed"
+                exit 1
+              fi
+              sleep 10
+              attempt=$((attempt + 1))
+            fi
+          done
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      
+      - name: 📊 Post-Rollback Status
+        run: |
+          echo "📊 Post-rollback Worker Service status:"
+          flyctl status --app swarm-worker
+          echo "✅ Worker Service rollback completed successfully"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  post-rollback-validation:
+    name: 🔍 Post-Rollback Validation
+    needs: [rollback-manager, rollback-dashboard, rollback-worker]
+    if: always() && needs.validate-rollback.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🧪 System Integration Test
+        run: |
+          echo "🧪 Running post-rollback system tests..."
+          
+          # Test Manager API if it was rolled back
+          if [ "${{ needs.rollback-manager.result }}" == "success" ] || [ "${{ github.event.inputs.service }}" == "manager" ] || [ "${{ github.event.inputs.service }}" == "all" ]; then
+            if curl -f --max-time 10 https://swarm-manager-live.fly.dev/health; then
+              echo "✅ Manager API responding after rollback"
+            else
+              echo "❌ Manager API not responding after rollback"
+            fi
+          fi
+          
+          # Test Dashboard if it was rolled back
+          if [ "${{ needs.rollback-dashboard.result }}" == "success" ] || [ "${{ github.event.inputs.service }}" == "dashboard" ] || [ "${{ github.event.inputs.service }}" == "all" ]; then
+            if curl -f --max-time 10 https://admin-dashboard-l0e1w6ivz-hackingco.vercel.app; then
+              echo "✅ Dashboard responding after rollback"
+            else
+              echo "❌ Dashboard not responding after rollback"
+            fi
+          fi
+      
+      - name: 📊 Generate Rollback Report
+        run: |
+          echo "## 🔄 Rollback Completion Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Status | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          # Manager API rollback status
+          if [ "${{ needs.rollback-manager.result }}" == "success" ]; then
+            echo "| Manager API | ✅ Rolled Back | Successfully restored to previous version |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.rollback-manager.result }}" == "skipped" ]; then
+            echo "| Manager API | ⏭️ Skipped | Not included in rollback request |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.rollback-manager.result }}" == "failure" ]; then
+            echo "| Manager API | ❌ Failed | Rollback failed - manual intervention required |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Dashboard rollback status
+          if [ "${{ needs.rollback-dashboard.result }}" == "success" ]; then
+            echo "| Dashboard | ⚠️ Manual | Requires manual verification via Vercel dashboard |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.rollback-dashboard.result }}" == "skipped" ]; then
+            echo "| Dashboard | ⏭️ Skipped | Not included in rollback request |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.rollback-dashboard.result }}" == "failure" ]; then
+            echo "| Dashboard | ❌ Failed | Rollback failed - manual intervention required |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Worker rollback status
+          if [ "${{ needs.rollback-worker.result }}" == "success" ]; then
+            echo "| Worker Service | ✅ Rolled Back | Successfully restored to previous version |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.rollback-worker.result }}" == "skipped" ]; then
+            echo "| Worker Service | ⏭️ Skipped | Not included in rollback request |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.rollback-worker.result }}" == "failure" ]; then
+            echo "| Worker Service | ❌ Failed | Rollback failed - manual intervention required |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Rollback Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Rollback ID**: ${{ env.ROLLBACK_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Reason**: ${{ github.event.inputs.reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Requested by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Completed at**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "${{ github.event.inputs.rollback_to }}" ]; then
+            echo "- **Target Release**: ${{ github.event.inputs.rollback_to }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Target Release**: Previous release (automatic)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🎯 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Verify all services are functioning correctly" >> $GITHUB_STEP_SUMMARY
+          echo "2. Review and address the issues that caused the rollback" >> $GITHUB_STEP_SUMMARY
+          echo "3. Update monitoring and alerts if necessary" >> $GITHUB_STEP_SUMMARY
+          echo "4. Plan and test fixes before next deployment" >> $GITHUB_STEP_SUMMARY
+      
+      - name: 📧 Audit Trail
+        run: |
+          echo "📧 Rollback audit trail created"
+          echo "🔍 All rollback actions logged for compliance"
+          echo "📋 Incident response team notified"

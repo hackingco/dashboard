@@ -1,0 +1,65 @@
+# Development Dockerfile for Manager API
+# Optimized for hot reload and fast rebuilds
+
+ARG NODE_VERSION=20-alpine
+FROM node:${NODE_VERSION} AS base
+
+# Install system dependencies and development tools
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    sqlite-dev \
+    curl \
+    bash \
+    git \
+    && npm install -g pnpm@latest tsx nodemon \
+    && node -v && npm -v && pnpm -v
+
+# Create app directory with proper permissions
+WORKDIR /app
+
+# Enable pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Configure pnpm for better caching
+ENV PNPM_HOME="/root/.pnpm-store" \
+    PNPM_STORE_DIR="/root/.pnpm-store" \
+    PATH="$PNPM_HOME:$PATH"
+
+# Copy workspace configuration files first (for better caching)
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+
+# Copy all package.json files to leverage Docker cache
+COPY apps/manager/package.json ./apps/manager/
+COPY shared/types/package.json ./shared/types/
+COPY shared/utils/package.json ./shared/utils/
+COPY shared/supabase/package.json ./shared/supabase/
+
+# Install dependencies with cache mount
+RUN --mount=type=cache,target=/root/.pnpm-store \
+    pnpm install --frozen-lockfile --prefer-offline
+
+# Copy source code (this layer will be overridden by volume mount)
+COPY . .
+
+# Build shared packages
+RUN pnpm --filter @swarm/types build && \
+    pnpm --filter @swarm/utils build && \
+    pnpm --filter @swarm/supabase build
+
+# Set working directory to manager app
+WORKDIR /app/apps/manager
+
+# Expose ports
+EXPOSE 8080 9229
+
+# Enable Node.js debugging
+ENV NODE_OPTIONS="--inspect=0.0.0.0:9229 --max-old-space-size=4096"
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Development command with tsx watch
+CMD ["pnpm", "run", "dev"]
