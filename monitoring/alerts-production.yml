@@ -1,0 +1,224 @@
+# Production Alert Rules for Swarm Platform
+
+groups:
+  # System alerts
+  - name: system_alerts
+    interval: 30s
+    rules:
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is above 80% (current value: {{ $value }}%)"
+
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 85% (current value: {{ $value }}%)"
+
+      - alert: DiskSpaceLow
+        expr: |
+          (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk usage is above 90% (current value: {{ $value }}%)"
+
+  # Database alerts
+  - name: database_alerts
+    interval: 30s
+    rules:
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL instance {{ $labels.instance }} is not responding"
+
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag_seconds > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL replication lag"
+          description: "Replication lag is {{ $value }} seconds"
+
+      - alert: PostgreSQLTooManyConnections
+        expr: |
+          sum(pg_stat_database_numbackends) / sum(pg_settings_max_connections) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL has too many connections"
+          description: "Connection usage is above 80%"
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Redis is down"
+          description: "Redis instance {{ $labels.instance }} is not responding"
+
+      - alert: RedisHighMemoryUsage
+        expr: |
+          redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis memory usage is high"
+          description: "Memory usage is above 90%"
+
+  # Application alerts
+  - name: application_alerts
+    interval: 30s
+    rules:
+      - alert: SwarmManagerDown
+        expr: up{job="swarm-manager"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: swarm
+        annotations:
+          summary: "Swarm Manager is down"
+          description: "Swarm Manager is not responding"
+
+      - alert: SwarmWorkerDown
+        expr: up{job="swarm-workers"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: swarm
+        annotations:
+          summary: "Swarm Worker is down"
+          description: "Swarm Worker {{ $labels.worker_id }} is not responding"
+
+      - alert: LangfuseDown
+        expr: up{job="langfuse"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: langfuse
+        annotations:
+          summary: "Langfuse server is down"
+          description: "Langfuse instance {{ $labels.instance }} is not responding"
+
+      - alert: HighErrorRate
+        expr: |
+          rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High error rate"
+          description: "Error rate is above 5% (current value: {{ $value }})"
+
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API response time"
+          description: "95th percentile response time is above 1s (current value: {{ $value }}s)"
+
+  # Swarm specific alerts
+  - name: swarm_alerts
+    interval: 30s
+    rules:
+      - alert: SwarmTaskQueueBacklog
+        expr: |
+          swarm_task_queue_size > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: swarm
+        annotations:
+          summary: "Swarm task queue is backing up"
+          description: "Task queue size is {{ $value }}"
+
+      - alert: SwarmWorkerCapacityLow
+        expr: |
+          (swarm_worker_capacity_used / swarm_worker_capacity_total) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: swarm
+        annotations:
+          summary: "Swarm worker capacity is low"
+          description: "Worker {{ $labels.worker_id }} is at {{ $value }}% capacity"
+
+      - alert: SwarmTokenUsageHigh
+        expr: |
+          rate(swarm_token_usage_total[1h]) > 1000000
+        for: 5m
+        labels:
+          severity: warning
+          component: swarm
+        annotations:
+          summary: "High token usage detected"
+          description: "Token usage rate is {{ $value }} per hour"
+
+  # Infrastructure alerts
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      - alert: HAProxyBackendDown
+        expr: haproxy_backend_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: loadbalancer
+        annotations:
+          summary: "HAProxy backend is down"
+          description: "Backend {{ $labels.backend }} is not available"
+
+      - alert: CertificateExpiringSoon
+        expr: |
+          (probe_ssl_earliest_cert_expiry - time()) / 86400 < 30
+        for: 1h
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "SSL certificate expiring soon"
+          description: "Certificate for {{ $labels.instance }} expires in {{ $value }} days"
+
+      - alert: BackupFailed
+        expr: |
+          time() - backup_last_success_timestamp > 86400 * 2
+        for: 1h
+        labels:
+          severity: critical
+          component: backup
+        annotations:
+          summary: "Backup has not run successfully"
+          description: "Last successful backup was {{ $value }} seconds ago"
