@@ -1,0 +1,44 @@
+# CODEOWNERS - Define code ownership for automated reviews
+# Global fallback - requires review from core team
+* @hackingco
+
+# Critical security and infrastructure files require admin review
+/.github/ @hackingco
+/scripts/ @hackingco
+/fly.toml @hackingco
+/Dockerfile* @hackingco
+/**/fly.toml @hackingco
+
+# Application-specific ownership
+/apps/dashboard/ @hackingco
+/apps/manager/ @hackingco
+/apps/worker/ @hackingco
+
+# Shared utilities and core infrastructure
+/shared/ @hackingco
+/packages/ @hackingco
+
+# Database and migration files
+/**/migrations/ @hackingco
+/**/prisma/ @hackingco
+/**/database/ @hackingco
+
+# Configuration and environment files
+/.env* @hackingco
+/**/config/ @hackingco
+/pnpm-workspace.yaml @hackingco
+/package.json @hackingco
+
+# CI/CD and automation
+/.github/workflows/ @hackingco
+/.github/actions/ @hackingco
+
+# Documentation requires review for accuracy
+/README.md @hackingco
+/docs/ @hackingco
+/**/README.md @hackingco
+
+# Security-sensitive files
+/SECURITY.md @hackingco
+/**/auth/ @hackingco
+/**/security/ @hackingco

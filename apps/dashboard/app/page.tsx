@@ -13,7 +13,7 @@ import { TrustGraph } from '@/components/observability/TrustGraph';
 import { LangfuseTraces } from '@/components/observability/LangfuseTraces';
 import { SwarmStatusDisplay } from '@/components/SwarmStatusDisplay';
 import { SwarmStatusRealtime } from '@/components/SwarmStatusRealtime';
-import { ObservabilityDashboard } from '@/components/ObservabilityDashboard';
+import { ObservabilityDashboard } from '@/components/observability/ObservabilityDashboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
