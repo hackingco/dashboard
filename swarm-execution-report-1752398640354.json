@@ -1,0 +1,80 @@
+{
+  "swarmConfig": {
+    "id": "swarm-real-1752398521372",
+    "topology": "hierarchical",
+    "maxAgents": 6,
+    "task": "Build a complete REST API with authentication, testing, and documentation"
+  },
+  "executionResults": {
+    "startTime": 1752398524689,
+    "completedAgents": 6,
+    "totalAgents": 6,
+    "agentResults": {
+      "Architect": true,
+      "Researcher": true,
+      "Coder-Backend": true,
+      "Coder-Frontend": true,
+      "Tester": true,
+      "Coordinator": true
+    },
+    "endTime": 1752398640354,
+    "duration": 115665,
+    "successRate": 100
+  },
+  "agentDetails": [
+    {
+      "name": "Architect",
+      "role": "architect",
+      "task": "Design system architecture and API specifications",
+      "completed": true,
+      "completionTime": 19277.5
+    },
+    {
+      "name": "Researcher",
+      "role": "researcher",
+      "task": "Research authentication patterns and security best practices",
+      "completed": true,
+      "completionTime": 19277.5
+    },
+    {
+      "name": "Coder-Backend",
+      "role": "coder",
+      "task": "Implement REST API endpoints and authentication logic",
+      "completed": true,
+      "completionTime": 19277.5
+    },
+    {
+      "name": "Coder-Frontend",
+      "role": "coder",
+      "task": "Create API client and integration examples",
+      "completed": true,
+      "completionTime": 19277.5
+    },
+    {
+      "name": "Tester",
+      "role": "tester",
+      "task": "Develop comprehensive test suite and validation",
+      "completed": true,
+      "completionTime": 19277.5
+    },
+    {
+      "name": "Coordinator",
+      "role": "coordinator",
+      "task": "Orchestrate workflow and monitor progress",
+      "completed": true,
+      "completionTime": 19277.5
+    }
+  ],
+  "metrics": {
+    "totalDuration": 115665,
+    "averageAgentTime": 19277.5,
+    "successRate": 100,
+    "coordinationEfficiency": 1
+  },
+  "coordination": {
+    "memoryOperations": 24,
+    "hookExecutions": 36,
+    "phaseTransitions": 3,
+    "checkpoints": 2
+  }
+}

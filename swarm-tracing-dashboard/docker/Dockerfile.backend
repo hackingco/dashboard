@@ -1,0 +1,28 @@
+FROM node:20-alpine
+
+# Install system dependencies
+RUN apk add --no-cache curl
+
+# Set working directory
+WORKDIR /app
+
+# Copy package.json and install dependencies
+COPY backend/package.json ./
+RUN npm install --omit=dev
+
+# Copy application code
+COPY backend/ ./
+
+# Create health check script
+RUN echo '#!/bin/sh\ncurl -f http://localhost:3002/api/health || exit 1' > /healthcheck.sh && \
+    chmod +x /healthcheck.sh
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD /healthcheck.sh
+
+# Expose port
+EXPOSE 3002
+
+# Start the backend
+CMD ["node", "server.js"]

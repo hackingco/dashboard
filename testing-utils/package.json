@@ -1,0 +1,17 @@
+{
+  "name": "langfuse-testing-utils",
+  "version": "1.0.0",
+  "description": "Testing utilities for Langfuse Docker deployment",
+  "main": "index.js",
+  "scripts": {
+    "test": "node ../langfuse-test-suite.js",
+    "port-scan": "node ../port-manager.js",
+    "cleanup": "bash ../docker-cleanup.sh"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "axios": "^1.6.0",
+    "ws": "^8.16.0",
+    "uuid": "^9.0.1"
+  }
+}

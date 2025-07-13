@@ -1,0 +1,3 @@
+[31m[41m[30m ERROR [39m[31m[49m [31mUnknown option: 'coverage'[39m[31m[39m
+[31mDid you mean 'reverse'? Use "--config.unknown=value" to force an unknown option.[39m
+For help, run: pnpm help test

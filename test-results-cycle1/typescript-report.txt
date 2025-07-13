@@ -1,0 +1,13 @@
+
+> fly-swarm-orchestrator@0.1.0 build /Users/shaight/claude-projects/swarm03
+> turbo run build "--workspace=shared/types"
+
+[31;40m ERROR [0m [31;49munexpected argument '--workspace' found
+
+  tip: to pass '--workspace' as a value, use '-- --workspace'
+
+Usage: turbo run <--cache-dir <CACHE_DIR>|--concurrency <CONCURRENCY>|--continue|--single-package|--force [<FORCE>]|--framework-inference [<BOOL>]|--global-deps <GLOBAL_DEPS>|--env-mode [<ENV_MODE>]|--filter <FILTER>|--scope <SCOPE>|--ignore <IGNORE>|--since <SINCE>|--include-dependencies|--no-deps|--output-logs <OUTPUT_LOGS>|--log-order <LOG_ORDER>|--only|--pkg-inference-root <PKG_INFERENCE_ROOT>|--remote-only [<BOOL>]|--log-prefix <LOG_PREFIX>|TASKS|PASS_THROUGH_ARGS>
+
+For more information, try '--help'.
+[0m
+[41m[30m ELIFECYCLE [39m[49m [31mCommand failed with exit code 1.[39m

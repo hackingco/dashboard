@@ -1,0 +1,129 @@
+{
+  "sessionId": "swarm-intelligence-1752444949726",
+  "swarmId": "swarm_1752444791970_o6qywx0um",
+  "validationTimestamp": "2025-07-13T22:24:03.043Z",
+  "intelligenceValidated": true,
+  "totalTraces": 6,
+  "totalIndicators": 24,
+  "averageConfidence": 0.9651384935744957,
+  "intelligenceCategories": {
+    "coordination": {
+      "traceCount": 1,
+      "evidence": [
+        {
+          "traceId": "trace-init-1752444949727",
+          "traceName": "Swarm Intelligence Initialization",
+          "type": "coordination",
+          "indicators": [
+            "Hierarchical agent activation sequence",
+            "Role-based capability distribution",
+            "Synchronized initialization timing",
+            "Cross-agent dependency recognition"
+          ],
+          "evidence": "Agents activated in optimal sequence with role awareness",
+          "intelligence": "Demonstrates coordinated behavior and role specialization",
+          "timestamp": "2025-07-13T22:24:03.042Z",
+          "confidence": 0.973459014600494
+        }
+      ]
+    },
+    "emergence": {
+      "traceCount": 2,
+      "evidence": [
+        {
+          "traceId": "trace-problem-1752444949836",
+          "traceName": "Collective Problem Solving",
+          "type": "emergence",
+          "indicators": [
+            "Pattern recognition across agent interactions",
+            "Collective solution synthesis",
+            "Emergent optimization strategies",
+            "Self-organizing behavior patterns"
+          ],
+          "evidence": "Agents discovered patterns not programmed individually",
+          "intelligence": "Shows emergent properties exceeding individual capabilities",
+          "timestamp": "2025-07-13T22:24:03.042Z",
+          "confidence": 0.9854712215632502
+        },
+        {
+          "traceId": "trace-pattern-1752444949917",
+          "traceName": "Emergent Pattern Recognition",
+          "type": "emergence",
+          "indicators": [
+            "Pattern recognition across agent interactions",
+            "Collective solution synthesis",
+            "Emergent optimization strategies",
+            "Self-organizing behavior patterns"
+          ],
+          "evidence": "Agents discovered patterns not programmed individually",
+          "intelligence": "Shows emergent properties exceeding individual capabilities",
+          "timestamp": "2025-07-13T22:24:03.043Z",
+          "confidence": 0.8620871256582183
+        }
+      ]
+    },
+    "adaptation": {
+      "traceCount": 1,
+      "evidence": [
+        {
+          "traceId": "trace-learning-1752444949936",
+          "traceName": "Adaptive Learning",
+          "type": "adaptation",
+          "indicators": [
+            "Performance improvement over time",
+            "Strategy refinement based on feedback",
+            "Dynamic capability enhancement",
+            "Context-aware behavior modification"
+          ],
+          "evidence": "Swarm adapted strategies based on performance data",
+          "intelligence": "Demonstrates learning and adaptive optimization",
+          "timestamp": "2025-07-13T22:24:03.043Z",
+          "confidence": 0.9946434340472764
+        }
+      ]
+    },
+    "consensus": {
+      "traceCount": 2,
+      "evidence": [
+        {
+          "traceId": "trace-decision-1752444949882",
+          "traceName": "Distributed Decision Making",
+          "type": "consensus",
+          "indicators": [
+            "Democratic decision-making process",
+            "Confidence-weighted opinion integration",
+            "Conflict resolution mechanisms",
+            "Collective agreement formation"
+          ],
+          "evidence": "Reached consensus through distributed voting and reasoning",
+          "intelligence": "Shows collective decision-making superior to individual choices",
+          "timestamp": "2025-07-13T22:24:03.042Z",
+          "confidence": 0.9981275818289664
+        },
+        {
+          "traceId": "trace-consensus-1752444949950",
+          "traceName": "Swarm Intelligence Complete",
+          "type": "consensus",
+          "indicators": [
+            "Democratic decision-making process",
+            "Confidence-weighted opinion integration",
+            "Conflict resolution mechanisms",
+            "Collective agreement formation"
+          ],
+          "evidence": "Reached consensus through distributed voting and reasoning",
+          "intelligence": "Shows collective decision-making superior to individual choices",
+          "timestamp": "2025-07-13T22:24:03.043Z",
+          "confidence": 0.9770425837487693
+        }
+      ]
+    }
+  },
+  "swarmIntelligenceLevel": "Advanced",
+  "keyFindings": [
+    "Swarm demonstrated coordinated multi-agent behavior",
+    "Emergent properties exceeded individual agent capabilities",
+    "Collective decision-making achieved consensus",
+    "Adaptive learning improved performance over time",
+    "Self-organization emerged without central control"
+  ]
+}
