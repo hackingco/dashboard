@@ -1,0 +1,421 @@
+name: ⚡ Performance Monitoring & Regression Detection
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run performance tests every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      test_duration:
+        description: 'Test duration in minutes'
+        required: true
+        default: '10'
+        type: choice
+        options:
+          - '5'
+          - '10'
+          - '30'
+          - '60'
+      load_level:
+        description: 'Load test intensity'
+        required: true
+        default: 'medium'
+        type: choice
+        options:
+          - low
+          - medium
+          - high
+          - stress
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '8'
+  PERFORMANCE_THRESHOLD_P95: '500'  # 500ms for 95th percentile
+  PERFORMANCE_THRESHOLD_P99: '1000' # 1s for 99th percentile
+
+jobs:
+  baseline-performance:
+    name: 📊 Establish Performance Baseline
+    runs-on: ubuntu-latest
+    outputs:
+      baseline-established: ${{ steps.baseline.outputs.established }}
+      baseline-p95: ${{ steps.baseline.outputs.p95 }}
+      baseline-p99: ${{ steps.baseline.outputs.p99 }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🚀 Start baseline environment
+        run: |
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 45  # Allow services to fully stabilize
+
+      - name: 🔍 Verify service health
+        run: |
+          curl -f http://localhost:3000/api/health
+          curl -f http://localhost:3001/health
+          echo "✅ Services are healthy for baseline testing"
+
+      - name: 📊 Capture performance baseline
+        id: baseline
+        run: |
+          node tests/performance/capture-baseline.js \
+            --duration ${{ github.event.inputs.test_duration || '10' }} \
+            --output baseline-metrics.json
+          
+          P95=$(jq -r '.response_time.p95' baseline-metrics.json)
+          P99=$(jq -r '.response_time.p99' baseline-metrics.json)
+          
+          echo "established=true" >> $GITHUB_OUTPUT
+          echo "p95=$P95" >> $GITHUB_OUTPUT
+          echo "p99=$P99" >> $GITHUB_OUTPUT
+          
+          echo "📊 Baseline established - P95: ${P95}ms, P99: ${P99}ms"
+
+      - name: 🧹 Cleanup baseline environment
+        if: always()
+        run: docker-compose -f docker-compose.test.yml down
+
+      - name: 📤 Upload baseline data
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-baseline
+          path: baseline-metrics.json
+
+  load-testing:
+    name: 🚀 Load Testing
+    runs-on: ubuntu-latest
+    needs: baseline-performance
+    strategy:
+      matrix:
+        test-scenario:
+          - name: 'API Endpoints'
+            script: 'api-load-test.js'
+            target: 'http://localhost:3001'
+          - name: 'Dashboard UI'
+            script: 'ui-load-test.js'
+            target: 'http://localhost:3000'
+          - name: 'WebSocket Stress'
+            script: 'websocket-load-test.js'
+            target: 'ws://localhost:3001'
+          - name: 'Database Operations'
+            script: 'db-load-test.js'
+            target: 'http://localhost:3001'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🚀 Start test environment
+        run: |
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 45
+
+      - name: ⚡ Run ${{ matrix.test-scenario.name }} load test
+        run: |
+          node tests/performance/${{ matrix.test-scenario.script }} \
+            --target ${{ matrix.test-scenario.target }} \
+            --duration ${{ github.event.inputs.test_duration || '10' }} \
+            --load-level ${{ github.event.inputs.load_level || 'medium' }} \
+            --output ${{ matrix.test-scenario.name }}-results.json
+          
+          echo "⚡ ${{ matrix.test-scenario.name }} load test completed"
+
+      - name: 📊 Analyze performance metrics
+        run: |
+          node scripts/performance/analyze-metrics.js \
+            --input ${{ matrix.test-scenario.name }}-results.json \
+            --baseline baseline-metrics.json \
+            --output ${{ matrix.test-scenario.name }}-analysis.json
+          
+          echo "📊 Performance analysis completed for ${{ matrix.test-scenario.name }}"
+
+      - name: 🧹 Cleanup test environment
+        if: always()
+        run: docker-compose -f docker-compose.test.yml down
+
+      - name: 📤 Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results-${{ matrix.test-scenario.name }}
+          path: |
+            ${{ matrix.test-scenario.name }}-results.json
+            ${{ matrix.test-scenario.name }}-analysis.json
+
+  memory-profiling:
+    name: 🧠 Memory & Resource Profiling
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🚀 Start profiling environment
+        run: |
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 30
+
+      - name: 🧠 Run memory profiling
+        run: |
+          node tests/performance/memory-profiler.js \
+            --duration ${{ github.event.inputs.test_duration || '10' }} \
+            --output memory-profile.json
+          
+          echo "🧠 Memory profiling completed"
+
+      - name: 📊 CPU profiling
+        run: |
+          node tests/performance/cpu-profiler.js \
+            --duration ${{ github.event.inputs.test_duration || '10' }} \
+            --output cpu-profile.json
+          
+          echo "📊 CPU profiling completed"
+
+      - name: 🔍 Detect memory leaks
+        run: |
+          node scripts/performance/memory-leak-detector.js \
+            --profile memory-profile.json \
+            --output memory-leak-report.json
+          
+          echo "🔍 Memory leak detection completed"
+
+      - name: 🧹 Cleanup profiling environment
+        if: always()
+        run: docker-compose -f docker-compose.test.yml down
+
+      - name: 📤 Upload profiling results
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-profiling-results
+          path: |
+            memory-profile.json
+            cpu-profile.json
+            memory-leak-report.json
+
+  regression-detection:
+    name: 🔍 Performance Regression Detection
+    runs-on: ubuntu-latest
+    needs: [baseline-performance, load-testing, memory-profiling]
+    if: always() && !contains(needs.*.result, 'failure')
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ⬇️ Download all performance data
+        uses: actions/download-artifact@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🔍 Run regression analysis
+        id: regression
+        run: |
+          node scripts/performance/regression-analyzer.js \
+            --baseline-dir performance-baseline \
+            --results-dir . \
+            --threshold-p95 ${{ env.PERFORMANCE_THRESHOLD_P95 }} \
+            --threshold-p99 ${{ env.PERFORMANCE_THRESHOLD_P99 }} \
+            --output regression-report.json
+          
+          REGRESSION_DETECTED=$(jq -r '.regression_detected' regression-report.json)
+          REGRESSION_SEVERITY=$(jq -r '.severity' regression-report.json)
+          
+          echo "regression_detected=$REGRESSION_DETECTED" >> $GITHUB_OUTPUT
+          echo "severity=$REGRESSION_SEVERITY" >> $GITHUB_OUTPUT
+          
+          echo "🔍 Regression analysis completed: $REGRESSION_DETECTED"
+
+      - name: 📊 Generate performance trend report
+        run: |
+          node scripts/performance/trend-analyzer.js \
+            --historical-data historical-performance.json \
+            --current-data regression-report.json \
+            --output performance-trends.html
+          
+          echo "📊 Performance trend report generated"
+
+      - name: 🔔 Performance regression alert
+        if: steps.regression.outputs.regression_detected == 'true'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: 'warning'
+          channel: '#performance'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            ⚠️ PERFORMANCE REGRESSION DETECTED
+            📈 Severity: ${{ steps.regression.outputs.severity }}
+            🔗 Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            📊 Review performance trends and take action
+
+      - name: ✅ Performance health notification
+        if: steps.regression.outputs.regression_detected == 'false'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: 'good'
+          channel: '#performance'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            ✅ Performance health check passed
+            📊 No significant regressions detected
+            🎯 All metrics within acceptable thresholds
+
+      - name: 📤 Upload regression analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-regression-analysis
+          path: |
+            regression-report.json
+            performance-trends.html
+
+  browser-performance:
+    name: 🌐 Browser Performance Testing
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🎭 Install Playwright
+        run: pnpm exec playwright install ${{ matrix.browser }}
+
+      - name: 🚀 Start test environment
+        run: |
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 45
+
+      - name: 🌐 Run browser performance tests
+        run: |
+          node tests/performance/browser-performance.js \
+            --browser ${{ matrix.browser }} \
+            --duration ${{ github.event.inputs.test_duration || '10' }} \
+            --output browser-perf-${{ matrix.browser }}.json
+          
+          echo "🌐 Browser performance test completed for ${{ matrix.browser }}"
+
+      - name: 🎯 Lighthouse audit
+        if: matrix.browser == 'chromium'
+        run: |
+          npx lighthouse http://localhost:3000 \
+            --output html \
+            --output json \
+            --output-path ./lighthouse-audit \
+            --chrome-flags="--headless"
+          
+          echo "🎯 Lighthouse audit completed"
+
+      - name: 🧹 Cleanup
+        if: always()
+        run: docker-compose -f docker-compose.test.yml down
+
+      - name: 📤 Upload browser performance results
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-performance-${{ matrix.browser }}
+          path: |
+            browser-perf-${{ matrix.browser }}.json
+            lighthouse-audit.*
+
+  performance-summary:
+    name: 📊 Performance Summary & Metrics
+    runs-on: ubuntu-latest
+    needs: [baseline-performance, load-testing, memory-profiling, regression-detection, browser-performance]
+    if: always()
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ⬇️ Download all performance data
+        uses: actions/download-artifact@v4
+
+      - name: 📊 Generate comprehensive performance report
+        run: |
+          node scripts/performance/comprehensive-report.js \
+            --data-dir . \
+            --output comprehensive-performance-report.html
+          
+          echo "📊 Comprehensive performance report generated"
+
+      - name: 📈 Update performance database
+        run: |
+          node scripts/performance/update-performance-db.js \
+            --data-dir . \
+            --database-url ${{ secrets.PERFORMANCE_DB_URL }}
+          
+          echo "📈 Performance database updated"
+
+      - name: 📤 Upload comprehensive report
+        uses: actions/upload-artifact@v4
+        with:
+          name: comprehensive-performance-report
+          path: comprehensive-performance-report.html

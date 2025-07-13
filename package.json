@@ -21,6 +21,9 @@
     "test:coverage": "turbo run test:coverage",
     "test:smoke:staging": "turbo run test:smoke:staging",
     "test:smoke:production": "turbo run test:smoke:production",
+    "test:smoke": "node tests/monitoring/observability-smoke-test.js",
+    "test:smoke:websocket": "node tests/monitoring/websocket-realtime-test.js",
+    "test:smoke:observability": "node tests/monitoring/observability-smoke-test.js",
     "build:all": "turbo run build"
   },
   "devDependencies": {

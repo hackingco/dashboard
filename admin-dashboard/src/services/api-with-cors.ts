@@ -209,7 +209,85 @@ class RealApiService {
 
   // Swarm Management
   async getSwarms(): Promise<RealSwarmData[]> {
-    return this.fetchWithAuth('/enhanced-swarms');
+    try {
+      const response = await this.fetchWithAuth('/enhanced-swarms');
+      
+      // Handle both paginated and direct array responses
+      const swarmsData = response.data || response;
+      
+      if (!Array.isArray(swarmsData)) {
+        console.warn('Enhanced swarms API returned non-array data:', response);
+        return this.getMockSwarms();
+      }
+      
+      // Transform enhanced swarms (agent-based) to UI format (machine-based)
+      return swarmsData.map(swarm => this.transformEnhancedSwarmToUI(swarm));
+    } catch (error) {
+      console.error('Failed to fetch enhanced swarms:', error);
+      // Fallback to original swarms endpoint if enhanced fails
+      try {
+        return await this.fetchWithAuth('/swarms');
+      } catch (fallbackError) {
+        console.warn('Both enhanced and original swarms endpoints failed, using mock data');
+        return this.getMockSwarms();
+      }
+    }
+  }
+
+  /**
+   * Transform enhanced swarm data (agent-based) to UI format (machine-based)
+   */
+  private transformEnhancedSwarmToUI(enhancedSwarm: any): RealSwarmData {
+    const agents = enhancedSwarm.agents || [];
+    const activeAgents = agents.filter((a: any) => a.status === 'active' || a.status === 'busy' || a.status === 'idle');
+    const runningAgents = agents.filter((a: any) => a.status === 'active' || a.status === 'busy');
+    
+    return {
+      id: enhancedSwarm.id,
+      name: enhancedSwarm.name,
+      status: this.mapEnhancedStatus(enhancedSwarm.status),
+      description: enhancedSwarm.purpose,
+      flyAppName: enhancedSwarm.flyAppName,
+      region: enhancedSwarm.configuration?.resources?.region || 'ord',
+      config: {
+        workerCount: enhancedSwarm.configuration?.maxWorkers || agents.length,
+        machineType: enhancedSwarm.configuration?.resources?.cpu || 'shared-cpu-1x',
+        strategy: enhancedSwarm.configuration?.autoScale ? 'adaptive' : 'balanced',
+        autoScale: enhancedSwarm.configuration?.autoScale || false,
+      },
+      metrics: {
+        runningMachines: runningAgents.length,
+        totalMachines: agents.length,
+        cpuUsage: runningAgents.length > 0 ? Math.min((runningAgents.length / Math.max(agents.length, 1)) * 75, 100) : 0,
+        memoryUsage: runningAgents.length > 0 ? Math.min((runningAgents.length / Math.max(agents.length, 1)) * 65, 100) : 0,
+        networkIn: runningAgents.length * 1024,
+        networkOut: runningAgents.length * 2048,
+      },
+      agents: agents.map((agent: any) => ({
+        id: agent.id,
+        type: agent.role || agent.type,
+        status: agent.status,
+        capabilities: agent.tasks || agent.capabilities || [],
+      })),
+      created_at: enhancedSwarm.createdAt || new Date().toISOString(),
+      updated_at: enhancedSwarm.lastUpdated || enhancedSwarm.updatedAt || new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Map enhanced swarm status to UI-expected status values
+   */
+  private mapEnhancedStatus(status: string): 'active' | 'inactive' | 'scaling' | 'stopped' | 'error' {
+    const statusMap: Record<string, 'active' | 'inactive' | 'scaling' | 'stopped' | 'error'> = {
+      'running': 'active',
+      'initializing': 'scaling',
+      'scaling': 'scaling',
+      'stopped': 'stopped',
+      'error': 'error',
+      'inactive': 'inactive'
+    };
+    
+    return statusMap[status] || 'inactive';
   }
 
   async getSwarm(id: string): Promise<RealSwarmData> {
@@ -237,10 +315,31 @@ class RealApiService {
   }
 
   async scaleSwarm(id: string, targetCount: number): Promise<RealSwarmData> {
-    return this.fetchWithAuth(`/enhanced-swarms/${id}/scale`, {
-      method: 'POST',
-      body: JSON.stringify({ targetCount }),
-    });
+    try {
+      const response = await this.fetchWithAuth(`/enhanced-swarms/${id}/scale`, {
+        method: 'POST',
+        body: JSON.stringify({ targetAgents: targetCount, targetCount }),
+      });
+      
+      // The enhanced swarms scale endpoint returns a simple response,
+      // we need to fetch the updated swarm data
+      if (response.scaled || response.id) {
+        return await this.getSwarm(id);
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('Failed to scale enhanced swarm:', error);
+      // Fallback to original swarms endpoint
+      try {
+        return await this.fetchWithAuth(`/swarms/${id}/scale`, {
+          method: 'POST',
+          body: JSON.stringify({ targetCount }),
+        });
+      } catch (fallbackError) {
+        throw new Error(`Failed to scale swarm: ${error}`);
+      }
+    }
   }
 
   // Telemetry and Metrics

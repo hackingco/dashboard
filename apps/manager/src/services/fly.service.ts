@@ -1,7 +1,12 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import logger from './logger';
+import { logger } from '../lib/logger';
 import { Swarm, Worker } from '@swarm/types';
+import { trustGraphService } from './trustgraph/trustgraph.service';
+import { langfuseService } from './langfuse/langfuse.service';
+import { langfuseTracer } from '../utils/langfuse-tracer';
+import { flyApiClient } from './fly-api-client.service';
+import { v4 as uuidv4 } from 'uuid';
 
 const execAsync = promisify(exec);
 
@@ -10,47 +15,120 @@ export class FlyService {
   private flyApiUrl: string = 'https://api.machines.dev/v1';
 
   constructor() {
-    this.flyApiToken = process.env.FLY_API_TOKEN || '';
+    this.flyApiToken = process.env.FLY_ACCESS_TOKEN || process.env.FLY_API_TOKEN || '';
     if (!this.flyApiToken) {
-      logger.warn('FLY_API_TOKEN not set - Fly.io operations will fail');
+      logger.warn('FLY_ACCESS_TOKEN/FLY_API_TOKEN not set - Fly.io operations will fail');
     }
   }
 
-  private async flyApiRequest(method: string, path: string, body?: any) {
-    const response = await fetch(`${this.flyApiUrl}${path}`, {
-      method,
-      headers: {
-        'Authorization': `Bearer ${this.flyApiToken}`,
-        'Content-Type': 'application/json',
+  private async flyApiRequest(method: string, path: string, body?: any, operationName?: string) {
+    const endpoint = path;
+    const appName = this.extractAppName(path);
+    const operation = operationName || this.getOperationFromPath(method, path);
+    
+    return await langfuseTracer.traceApiCall(
+      {
+        spanName: `fly.api.${operation}`,
+        tags: {
+          endpoint,
+          app_name: appName || 'unknown',
+          http_method: method
+        }
       },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+      async () => {
+        const response = await fetch(`${this.flyApiUrl}${path}`, {
+          method,
+          headers: {
+            'Authorization': `Bearer ${this.flyApiToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: body ? JSON.stringify(body) : undefined,
+        });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Fly API error: ${response.status} - ${error}`);
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Fly API error: ${response.status} - ${error}`);
+        }
+
+        return response.json();
+      }
+    ).then(result => result.data);
+  }
+
+  private extractAppName(path: string): string | null {
+    const match = path.match(/\/apps\/([^\/]+)/);
+    return match ? match[1] : null;
+  }
+
+  private getOperationFromPath(method: string, path: string): string {
+    if (path.includes('/apps') && method === 'POST' && !path.includes('/machines')) {
+      return 'createApp';
     }
-
-    return response.json();
+    if (path.includes('/apps') && method === 'DELETE') {
+      return 'destroyApp';
+    }
+    if (path.includes('/apps') && method === 'GET' && !path.includes('/machines')) {
+      return 'listApps';
+    }
+    if (path.includes('/machines') && method === 'GET') {
+      return 'getMachines';
+    }
+    if (path.includes('/machines') && method === 'POST' && !path.includes('/stop') && !path.includes('/start') && !path.includes('/restart')) {
+      return 'createMachine';
+    }
+    if (path.includes('/machines') && method === 'POST' && path.includes('/start')) {
+      return 'startMachine';
+    }
+    if (path.includes('/machines') && method === 'POST' && path.includes('/stop')) {
+      return 'stopMachine';
+    }
+    if (path.includes('/machines') && method === 'POST' && path.includes('/restart')) {
+      return 'restartMachine';
+    }
+    if (path.includes('/machines') && method === 'DELETE') {
+      return 'destroyMachine';
+    }
+    if (path.includes('/machines') && method === 'POST') {
+      return 'scaleMachine';
+    }
+    return 'unknown';
   }
 
   async createApp(appName: string, org = 'personal'): Promise<void> {
-    try {
-      const { stdout, stderr } = await execAsync(
-        `fly apps create ${appName} --org ${org}`,
-        { env: { ...process.env, FLY_API_TOKEN: this.flyApiToken } }
-      );
-      logger.info(`Created Fly app: ${appName}`, { stdout, stderr });
-    } catch (error: any) {
-      if (error.message.includes('already exists')) {
-        logger.info(`App ${appName} already exists`);
-      } else {
-        throw error;
+    const response = await langfuseTracer.traceApiCall(
+      {
+        spanName: 'fly.api.createApp',
+        tags: {
+          endpoint: `/apps/${appName}`,
+          app_name: appName,
+          org: org
+        }
+      },
+      async () => {
+        try {
+          await flyApiClient.createApp(appName, org);
+          logger.info(`Created Fly app: ${appName}`);
+          return { created: true, appName };
+        } catch (error: any) {
+          if (error.message.includes('already exists')) {
+            logger.info(`App ${appName} already exists`);
+            return { created: false, appName, reason: 'already_exists' };
+          } else {
+            throw error;
+          }
+        }
       }
-    }
+    );
   }
 
   async createMachine(appName: string, config: any): Promise<any> {
+    const correlationId = uuidv4();
+    const traceId = langfuseService.startTrace(`create-machine-${appName}`, {
+      app_name: appName,
+      swarm_id: config.swarmId,
+      correlation_id: correlationId
+    });
+    
     try {
       // Validate required configuration
       if (!config.swarmId) {
@@ -59,7 +137,7 @@ export class FlyService {
 
       // Validate Fly API token
       if (!this.flyApiToken) {
-        throw new Error('FLY_API_TOKEN is not configured');
+        throw new Error('FLY_ACCESS_TOKEN/FLY_API_TOKEN is not configured');
       }
 
       // Create machine configuration
@@ -119,6 +197,45 @@ export class FlyService {
         memory: config.memory
       });
       
+      // Create TrustGraph node for the new machine
+      await trustGraphService.createNode({
+        id: `machine-${machine.id}`,
+        type: 'machine',
+        label: `Machine: ${machine.id}`,
+        metadata: {
+          app_name: appName,
+          swarm_id: config.swarmId,
+          correlation_id: correlationId,
+          region: machine.region,
+          state: machine.state,
+          cpus: config.cpus || 1,
+          memory: config.memory || 256
+        }
+      });
+      
+      // Track successful machine creation
+      await langfuseService.trackGeneration(
+        traceId,
+        'fly-machine-create',
+        JSON.stringify(machineConfig),
+        JSON.stringify(machine),
+        { input: 100, output: 50 }, // Estimate tokens
+        performance.now(),
+        {
+          machine_id: machine.id,
+          app_name: appName,
+          swarm_id: config.swarmId
+        }
+      );
+      
+      // Wait for machine to be ready with health check polling
+      await this.waitForMachineReady(appName, machine.id);
+      
+      await langfuseService.endTrace(traceId, {
+        status: 'success',
+        machine_id: machine.id
+      });
+      
       // Return machine details with additional metadata
       return {
         id: machine.id,
@@ -135,6 +252,10 @@ export class FlyService {
       };
     } catch (error) {
       logger.error('Failed to create machine', { appName, error });
+      await langfuseService.endTrace(traceId, {
+        status: 'error',
+        error: (error as Error).message
+      });
       throw error;
     }
   }
@@ -153,24 +274,89 @@ export class FlyService {
 
   async scaleApp(appName: string, count: number): Promise<void> {
     try {
-      const { stdout, stderr } = await execAsync(
-        `fly scale count ${count} --app ${appName}`,
-        { env: { ...process.env, FLY_API_TOKEN: this.flyApiToken } }
-      );
-      logger.info(`Scaled app ${appName} to ${count} instances`, { stdout, stderr });
+      // Get current machines
+      const machines = await this.listMachines(appName);
+      const currentCount = machines.length;
+      
+      if (currentCount === count) {
+        logger.info(`App ${appName} already has ${count} machines`);
+        return;
+      }
+      
+      if (count > currentCount) {
+        // Scale up - create new machines
+        const promises = [];
+        for (let i = currentCount; i < count; i++) {
+          // Get config from first machine if exists
+          const config = machines[0] ? {
+            region: machines[0].region,
+            dockerImage: machines[0].config.image,
+            cpus: machines[0].config.guest?.cpus || 1,
+            memory: machines[0].config.guest?.memory_mb || 256,
+            env: machines[0].config.env,
+            swarmId: machines[0].config.env?.SWARM_ID
+          } : {
+            region: 'dfw',
+            swarmId: 'default'
+          };
+          
+          promises.push(this.createMachine(appName, config));
+        }
+        await Promise.all(promises);
+        logger.info(`Scaled up app ${appName} from ${currentCount} to ${count} machines`);
+      } else {
+        // Scale down - stop extra machines
+        const toStop = currentCount - count;
+        const promises = [];
+        for (let i = 0; i < toStop; i++) {
+          promises.push(this.stopMachine(appName, machines[i].id));
+        }
+        await Promise.all(promises);
+        logger.info(`Scaled down app ${appName} from ${currentCount} to ${count} machines`);
+      }
     } catch (error) {
       logger.error('Failed to scale app', { appName, count, error });
       throw error;
     }
   }
 
+  async scaleMachine(appName: string, machineId: string, config: { cpus?: number; memory?: number }): Promise<any> {
+    try {
+      // Update machine configuration
+      const updateConfig = {
+        config: {
+          guest: {
+            cpus: config.cpus,
+            memory_mb: config.memory
+          }
+        }
+      };
+      
+      const response = await this.flyApiRequest('POST', `/apps/${appName}/machines/${machineId}`, updateConfig);
+      logger.info(`Updated machine ${machineId} configuration`, { cpus: config.cpus, memory: config.memory });
+      return response;
+    } catch (error) {
+      logger.error('Failed to scale machine', { appName, machineId, config, error });
+      throw error;
+    }
+  }
+
   async getAppStatus(appName: string): Promise<any> {
     try {
-      const { stdout } = await execAsync(
-        `fly status --app ${appName} --json`,
-        { env: { ...process.env, FLY_API_TOKEN: this.flyApiToken } }
-      );
-      return JSON.parse(stdout);
+      const machines = await flyApiClient.getAppMachines(appName);
+      // Transform machines data to match expected status format
+      return {
+        Name: appName,
+        Machines: machines,
+        Allocations: machines.map(machine => ({
+          ID: machine.id,
+          Status: machine.state,
+          Region: machine.region,
+          PrivateIP: machine.private_ip,
+          CreatedAt: machine.created_at,
+          UpdatedAt: machine.updated_at
+        }))
+      };
     } catch (error) {
       logger.error('Failed to get app status', { appName, error });
       throw error;
@@ -192,7 +378,7 @@ export class FlyService {
 
   async getMachineMetadata(appName: string, machineId: string): Promise<any> {
     try {
-      const machine = await this.flyApiRequest('GET', `/apps/${appName}/machines/${machineId}`) as any;
+      const machine = await this.flyApiRequest('GET', `/apps/${appName}/machines/${machineId}`, undefined, `get-metadata-${machineId}`) as any;
       logger.info(`Retrieved machine metadata`, { appName, machineId });
       
       return {
@@ -214,7 +400,7 @@ export class FlyService {
 
   async listMachines(appName: string): Promise<any[]> {
     try {
-      const machines = await this.flyApiRequest('GET', `/apps/${appName}/machines`) as any[];
+      const machines = await this.flyApiRequest('GET', `/apps/${appName}/machines`, undefined, `list-machines-${appName}`) as any[];
       logger.info(`Listed machines for app: ${appName}`, { count: machines.length });
       return machines;
     } catch (error) {
@@ -224,16 +410,20 @@ export class FlyService {
   }
 
   async deleteApp(appName: string): Promise<void> {
-    try {
-      const { stdout, stderr } = await execAsync(
-        `fly apps destroy ${appName} --yes`,
-        { env: { ...process.env, FLY_API_TOKEN: this.flyApiToken } }
-      );
-      logger.info(`Deleted app: ${appName}`, { stdout, stderr });
-    } catch (error) {
-      logger.error('Failed to delete app', { appName, error });
-      throw error;
-    }
+    const response = await langfuseTracer.traceApiCall(
+      {
+        spanName: 'fly.api.destroyApp',
+        tags: {
+          endpoint: `/apps/${appName}`,
+          app_name: appName
+        }
+      },
+      async () => {
+        await flyApiClient.destroyApp(appName);
+        logger.info(`Deleted app: ${appName}`);
+        return { deleted: true, appName };
+      }
+    );
   }
 
   private generateFlyConfig(appName: string, config: any): string {
@@ -308,18 +498,233 @@ CMD ["node", "src/index.js"]
 
   // Get all Fly apps that are swarm workers
   async listSwarmApps(): Promise<string[]> {
+    const response = await langfuseTracer.traceApiCall(
+      {
+        spanName: 'fly.api.listApps',
+        tags: {
+          endpoint: '/apps',
+          app_name: 'all',
+          filter: 'swarm-*'
+        }
+      },
+      async () => {
+        try {
+          const apps = await flyApiClient.listApps();
+          const swarmApps = apps
+            .filter(app => app.Name.startsWith('swarm-'))
+            .map(app => app.Name);
+          return { apps: swarmApps, total: swarmApps.length };
+        } catch (error) {
+          logger.error('Failed to list Fly apps', { error });
+          return { apps: [], total: 0 };
+        }
+      }
+    );
+    
+    return response.data.apps;
+  }
+
+  async getMachineStats(appName: string, machineId: string): Promise<any> {
     try {
-      const { stdout } = await execAsync(
-        `fly apps list --json`,
-        { env: { ...process.env, FLY_API_TOKEN: this.flyApiToken } }
-      );
-      const apps = JSON.parse(stdout);
-      return apps
-        .filter((app: any) => app.Name.startsWith('swarm-'))
-        .map((app: any) => app.Name);
+      const stats = await this.flyApiRequest('GET', `/apps/${appName}/machines/${machineId}/stats`) as any;
+      logger.info(`Retrieved machine stats`, { appName, machineId });
+      
+      return {
+        cpu: {
+          usage_percent: stats.cpu?.usage_percent || 0,
+          cores: stats.cpu?.cores || 1
+        },
+        memory: {
+          used_mb: stats.memory?.used_mb || 0,
+          total_mb: stats.memory?.total_mb || 256,
+          usage_percent: stats.memory?.usage_percent || 0
+        },
+        network: {
+          rx_bytes: stats.network?.rx_bytes || 0,
+          tx_bytes: stats.network?.tx_bytes || 0
+        },
+        disk: {
+          used_mb: stats.disk?.used_mb || 0,
+          total_mb: stats.disk?.total_mb || 0,
+          usage_percent: stats.disk?.usage_percent || 0
+        },
+        timestamp: new Date().toISOString()
+      };
     } catch (error) {
-      logger.error('Failed to list Fly apps', { error });
-      return [];
+      logger.error('Failed to get machine stats', { appName, machineId, error });
+      throw error;
+    }
+  }
+
+  async waitForMachineReady(appName: string, machineId: string, maxAttempts = 30, intervalMs = 2000): Promise<void> {
+    logger.info(`Waiting for machine ${machineId} to be ready...`);
+    const spanId = `wait-machine-${machineId}`;
+    
+    // Start Langfuse span for waiting operation
+    langfuseService.startSpan(spanId, 'Wait for Machine Ready', undefined, {
+      app_name: appName,
+      machine_id: machineId,
+      max_attempts: maxAttempts
+    });
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const machine = await this.getMachineMetadata(appName, machineId);
+        
+        // Check if machine is in a ready state
+        if (machine.state === 'started' || machine.state === 'running') {
+          // Check health endpoint if available
+          const health = await this.checkMachineHealth(appName, machineId);
+          if (health.status === 'passing') {
+            logger.info(`Machine ${machineId} is ready and healthy`);
+            
+            // End span successfully
+            langfuseService.endSpan(spanId, {
+              status: 'ready',
+              attempts: attempt + 1,
+              total_wait_ms: (attempt + 1) * intervalMs
+            });
+            
+            // Create TrustGraph edge for readiness
+            await trustGraphService.createEdge({
+              source: `machine-${machineId}`,
+              target: `machine-ready-${machineId}`,
+              label: 'became_ready',
+              type: 'executes',
+              metadata: {
+                attempts: attempt + 1,
+                health_status: health.status
+              }
+            });
+            
+            return;
+          }
+        }
+        
+        logger.info(`Machine ${machineId} state: ${machine.state}, attempt ${attempt + 1}/${maxAttempts}`);
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      } catch (error) {
+        logger.warn(`Health check attempt ${attempt + 1} failed`, { error });
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+    }
+    
+    // End span with failure
+    langfuseService.endSpan(spanId, undefined, 
+      new Error(`Machine ${machineId} failed to become ready after ${maxAttempts} attempts`)
+    );
+    
+    throw new Error(`Machine ${machineId} failed to become ready after ${maxAttempts} attempts`);
+  }
+
+  async checkMachineHealth(appName: string, machineId: string): Promise<{ status: string; checks: any[] }> {
+    try {
+      // Try to get machine health status
+      const machine = await this.getMachineMetadata(appName, machineId);
+      
+      // Check if machine has health checks configured
+      if (machine.checks && machine.checks.length > 0) {
+        const passing = machine.checks.every((check: any) => check.status === 'passing');
+        return {
+          status: passing ? 'passing' : 'failing',
+          checks: machine.checks
+        };
+      }
+      
+      // Default to checking machine state
+      return {
+        status: (machine.state === 'started' || machine.state === 'running') ? 'passing' : 'failing',
+        checks: [{
+          name: 'machine_state',
+          status: machine.state,
+          output: `Machine is ${machine.state}`
+        }]
+      };
+    } catch (error) {
+      logger.error('Failed to check machine health', { appName, machineId, error });
+      return {
+        status: 'failing',
+        checks: [{
+          name: 'health_check',
+          status: 'error',
+          output: error.message
+        }]
+      };
+    }
+  }
+
+  async stopMachine(appName: string, machineId: string): Promise<void> {
+    try {
+      await this.flyApiRequest('POST', `/apps/${appName}/machines/${machineId}/stop`, undefined, `stop-${machineId}`);
+      logger.info(`Stopped machine ${machineId}`);
+    } catch (error) {
+      logger.error('Failed to stop machine', { appName, machineId, error });
+      throw error;
+    }
+  }
+
+  async startMachine(appName: string, machineId: string): Promise<void> {
+    try {
+      await this.flyApiRequest('POST', `/apps/${appName}/machines/${machineId}/start`, undefined, `start-${machineId}`);
+      logger.info(`Started machine ${machineId}`);
+      
+      // Wait for machine to be ready
+      await this.waitForMachineReady(appName, machineId);
+    } catch (error) {
+      logger.error('Failed to start machine', { appName, machineId, error });
+      throw error;
+    }
+  }
+
+  async restartMachine(appName: string, machineId: string): Promise<void> {
+    try {
+      await this.flyApiRequest('POST', `/apps/${appName}/machines/${machineId}/restart`);
+      logger.info(`Restarted machine ${machineId}`);
+      
+      // Wait for machine to be ready
+      await this.waitForMachineReady(appName, machineId);
+    } catch (error) {
+      logger.error('Failed to restart machine', { appName, machineId, error });
+      throw error;
+    }
+  }
+
+  async destroyMachine(appName: string, machineId: string): Promise<void> {
+    try {
+      await this.flyApiRequest('DELETE', `/apps/${appName}/machines/${machineId}?force=true`);
+      logger.info(`Destroyed machine ${machineId}`);
+    } catch (error) {
+      logger.error('Failed to destroy machine', { appName, machineId, error });
+      throw error;
+    }
+  }
+
+  // Missing methods from the old flyService exports
+  async getMachines(appName: string): Promise<any[]> {
+    return this.listMachines(appName);
+  }
+
+  async getReleases(appName: string): Promise<any[]> {
+    try {
+      const releases = await this.flyApiRequest('GET', `/apps/${appName}/releases`) as any[];
+      logger.info(`Retrieved releases for app: ${appName}`, { count: releases.length });
+      return releases;
+    } catch (error) {
+      logger.error('Failed to get releases', { appName, error });
+      throw error;
+    }
+  }
+
+  async rollbackToRelease(appName: string, version: string): Promise<void> {
+    try {
+      await this.flyApiRequest('POST', `/apps/${appName}/releases`, { version }, `rollback-${appName}-${version}`);
+      logger.info(`Rolled back app ${appName} to version ${version}`);
+    } catch (error) {
+      logger.error('Failed to rollback to release', { appName, version, error });
+      throw error;
     }
   }
 }
+
+// Export default instance for backward compatibility
+export const flyService = new FlyService();

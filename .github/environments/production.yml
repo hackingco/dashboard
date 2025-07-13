@@ -1,0 +1,88 @@
+# Production Environment Configuration
+# This file defines protection rules and variables for production deployments
+
+name: production
+
+# Protection Rules
+protection_rules:
+  # Require manual approval from designated reviewers
+  - type: required_reviewers
+    required_reviewer_count: 2
+    
+  # Wait timer before deployment can proceed (in minutes)
+  - type: wait_timer
+    wait_timer: 5
+    
+  # Restrict deployments to specific branches
+  - type: branch_policy
+    allowed_branches:
+      - main
+      - hotfix/*
+
+# Environment Variables
+# These are available to all jobs running in this environment
+variables:
+  # Deployment Configuration
+  DEPLOY_TIMEOUT: "600"           # 10 minutes timeout for deployments
+  HEALTH_CHECK_RETRIES: "30"     # Number of health check attempts
+  HEALTH_CHECK_INTERVAL: "10"    # Seconds between health checks
+  
+  # Performance Thresholds
+  PERFORMANCE_THRESHOLD: "95"    # Minimum performance score (%)
+  MAX_RESPONSE_TIME: "500"       # Maximum acceptable response time (ms)
+  ERROR_RATE_THRESHOLD: "1"      # Maximum error rate (%)
+  
+  # Rollback Configuration
+  AUTO_ROLLBACK_ENABLED: "true"  # Enable automatic rollback on failure
+  ROLLBACK_TIMEOUT: "300"        # 5 minutes timeout for rollbacks
+  
+  # Monitoring Configuration
+  MONITORING_ENABLED: "true"     # Enable enhanced monitoring
+  ALERT_WEBHOOK_ENABLED: "true"  # Enable webhook notifications
+  
+  # Security Configuration
+  SECURITY_SCAN_REQUIRED: "true" # Require security scans
+  VULNERABILITY_THRESHOLD: "high" # Block deployment on high vulnerabilities
+
+# Secrets Required for Production
+# These must be configured in the repository/organization settings
+required_secrets:
+  - FLY_API_TOKEN
+  - VERCEL_TOKEN
+  - VERCEL_ORG_ID
+  - VERCEL_PROJECT_ID
+  - SUPABASE_URL
+  - SUPABASE_ANON_KEY
+  - SUPABASE_SERVICE_KEY
+  - REDIS_URL
+  - LANGFUSE_SECRET_KEY
+  - LANGFUSE_PUBLIC_KEY
+  - SLACK_WEBHOOK_URL         # For deployment notifications
+  - PAGERDUTY_INTEGRATION_KEY # For critical alerts
+
+# Deployment Windows
+# Define when deployments are allowed
+deployment_windows:
+  # Business hours (UTC)
+  business_hours:
+    - monday: "09:00-17:00"
+    - tuesday: "09:00-17:00" 
+    - wednesday: "09:00-17:00"
+    - thursday: "09:00-17:00"
+    - friday: "09:00-17:00"
+  
+  # Blackout periods (no deployments)
+  blackout_periods:
+    - name: "Holiday Season"
+      start: "2024-12-20"
+      end: "2025-01-05"
+    - name: "Black Friday"
+      start: "2024-11-28"
+      end: "2024-12-02"
+
+# SLA Requirements
+sla:
+  uptime_target: "99.9%"        # Required uptime
+  max_downtime_per_month: "43.2m" # Maximum downtime (minutes)
+  response_time_target: "200ms"  # Target response time
+  error_rate_target: "0.1%"     # Target error rate

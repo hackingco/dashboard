@@ -1,0 +1,122 @@
+# Staging Environment Configuration
+# This file defines protection rules and variables for staging deployments
+
+name: staging
+
+# Protection Rules
+protection_rules:
+  # Minimal wait timer for staging
+  - type: wait_timer
+    wait_timer: 1
+    
+  # Allow any collaborator to deploy to staging
+  - type: required_reviewers
+    required_reviewer_count: 0
+
+# Environment Variables
+# These are available to all jobs running in this environment
+variables:
+  # Deployment Configuration
+  DEPLOY_TIMEOUT: "300"          # 5 minutes timeout for deployments
+  HEALTH_CHECK_RETRIES: "15"    # Number of health check attempts
+  HEALTH_CHECK_INTERVAL: "10"   # Seconds between health checks
+  
+  # Performance Thresholds (more lenient than production)
+  PERFORMANCE_THRESHOLD: "80"   # Minimum performance score (%)
+  MAX_RESPONSE_TIME: "1000"     # Maximum acceptable response time (ms)
+  ERROR_RATE_THRESHOLD: "5"     # Maximum error rate (%)
+  
+  # Rollback Configuration
+  AUTO_ROLLBACK_ENABLED: "true" # Enable automatic rollback on failure
+  ROLLBACK_TIMEOUT: "180"       # 3 minutes timeout for rollbacks
+  
+  # Monitoring Configuration
+  MONITORING_ENABLED: "true"    # Enable monitoring
+  ALERT_WEBHOOK_ENABLED: "false" # Disable webhook notifications for staging
+  
+  # Security Configuration
+  SECURITY_SCAN_REQUIRED: "false" # Optional security scans for staging
+  VULNERABILITY_THRESHOLD: "critical" # Only block on critical vulnerabilities
+  
+  # Testing Configuration
+  E2E_TESTS_ENABLED: "true"     # Enable E2E testing
+  PERFORMANCE_TESTS_ENABLED: "true" # Enable performance testing
+  LOAD_TEST_DURATION: "60"     # Load test duration in seconds
+  
+  # Resource Configuration
+  STAGING_RESOURCES_LIMITED: "true" # Use smaller instances for staging
+  AUTO_CLEANUP_ENABLED: "true"  # Auto-cleanup staging resources
+  CLEANUP_AFTER_HOURS: "48"     # Hours before auto-cleanup
+
+# Secrets Required for Staging
+# These must be configured in the repository/organization settings
+required_secrets:
+  - FLY_API_TOKEN
+  - VERCEL_TOKEN
+  - VERCEL_ORG_ID
+  - VERCEL_PROJECT_ID
+  - SUPABASE_URL
+  - SUPABASE_ANON_KEY
+
+# Deployment Windows
+# Staging allows deployments at any time
+deployment_windows:
+  # 24/7 deployment window for staging
+  always_allowed: true
+  
+  # No blackout periods for staging
+  blackout_periods: []
+
+# Testing Requirements
+testing:
+  # Required test suites for staging
+  required_tests:
+    - unit_tests
+    - integration_tests
+    - security_scan
+    - build_validation
+  
+  # Optional test suites
+  optional_tests:
+    - e2e_tests
+    - performance_tests
+    - load_tests
+    - accessibility_tests
+  
+  # Test timeouts
+  timeouts:
+    unit_tests: "300"        # 5 minutes
+    integration_tests: "600" # 10 minutes
+    e2e_tests: "900"        # 15 minutes
+    performance_tests: "300" # 5 minutes
+
+# Resource Limits
+resource_limits:
+  # Maximum number of staging apps per PR
+  max_staging_apps: 3
+  
+  # Maximum staging app lifetime (hours)
+  max_lifetime_hours: 72
+  
+  # Automatic cleanup policy
+  auto_cleanup:
+    enabled: true
+    after_pr_close: true
+    after_hours: 48
+
+# Notifications
+notifications:
+  # Staging deployment notifications
+  channels:
+    - type: "github_comment"
+      enabled: true
+    - type: "slack"
+      enabled: false
+      webhook_url: "" # Optional Slack webhook for staging notifications
+  
+  # Notification triggers
+  triggers:
+    - deployment_success
+    - deployment_failure
+    - test_failure
+    - performance_degradation
