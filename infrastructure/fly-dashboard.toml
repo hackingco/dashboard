@@ -1,0 +1,123 @@
+# Fly.io Configuration for Swarm Dashboard (Next.js)
+# Frontend interface for swarm management and monitoring
+
+app = "swarm-dashboard"
+primary_region = "ord"
+
+[build]
+  dockerfile = "../apps/dashboard/Dockerfile"
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+  
+  # API connections
+  NEXT_PUBLIC_API_URL = "https://swarm-manager-prod.fly.dev"
+  NEXT_PUBLIC_LANGFUSE_URL = "https://langfuse-swarm.fly.dev"
+  
+  # Supabase configuration (public keys)
+  NEXT_PUBLIC_SUPABASE_URL = "placeholder"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = "placeholder"
+  
+  # Performance optimizations
+  NEXT_TELEMETRY_DISABLED = "1"
+  NODE_OPTIONS = "--max-old-space-size=512"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 50
+    soft_limit = 40
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 3000
+  processes = ["app"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+  
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 50
+    soft_limit = 40
+
+# Health checks for Next.js app
+[[services.tcp_checks]]
+  interval = "15s"
+  timeout = "3s"
+  grace_period = "10s"
+
+[[services.http_checks]]
+  interval = "10s"
+  timeout = "3s"
+  grace_period = "10s"
+  method = "get"
+  path = "/api/health"
+  protocol = "http"
+  tls_skip_verify = false
+
+# Light resource allocation for dashboard
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+# Multi-region deployment for better UX
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+[experimental]
+  auto_rollback = true
+
+# Metrics for dashboard monitoring
+[metrics]
+  port = 9092
+  path = "/metrics"
+
+# Process configuration for Next.js standalone
+[processes]
+  app = "node server.js"
+
+# Auto-scaling based on traffic
+[[machine]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+[placement]
+  strategy = "spread"
+  regions = ["ord", "iad"]
+
+# Static asset optimization
+[[statics]]
+  guest_path = "/app/.next/static"
+  url_prefix = "/_next/static/"
+
+[[statics]]
+  guest_path = "/app/public"
+  url_prefix = "/static/"
+
+# Network configuration
+[network]
+  strategy = "rolling"
+  wait_timeout = "20s"
+
+# Secrets that need to be set via `fly secrets set`
+# NEXT_PUBLIC_SUPABASE_URL = "https://xxx.supabase.co"
+# NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGci..."

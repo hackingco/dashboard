@@ -1,0 +1,102 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-postgres.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass redis_password
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - '--raw'
+        - incr
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  langfuse:
+    image: langfuse/langfuse:2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse_password@postgres:5432/langfuse
+      NEXTAUTH_SECRET: your-secret-key-here-minimum-32-chars-long
+      SALT: your-salt-here-minimum-32-chars-long
+      NEXTAUTH_URL: http://localhost:3000
+      TELEMETRY_ENABLED: 'false'
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: 'false'
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - '--spider'
+        - http://localhost:3000/api/public/health
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    restart: unless-stopped
+    depends_on:
+      langfuse:
+        condition: service_healthy
+    ports:
+      - '3002:3001'
+      - '3002:3002'
+      - '8080:8080'
+    environment:
+      NODE_ENV: production
+      LANGFUSE_PUBLIC_KEY: pk-lf-test
+      LANGFUSE_SECRET_KEY: sk-lf-test
+      LANGFUSE_HOST: http://langfuse:3000
+      DASHBOARD_PORT: 3001
+      WEBSOCKET_PORT: 3002
+      OBSERVER_PORT: 8080
+    volumes:
+      - ./shared/langfuse-wrapper:/app
+      - dashboard_data:/data
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - '--spider'
+        - http://localhost:3001/api/health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+volumes:
+  postgres_data: {}
+  redis_data: {}
+  dashboard_data: {}
+networks:
+  default:
+    name: langfuse-testing-network

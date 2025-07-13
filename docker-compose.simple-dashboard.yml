@@ -1,0 +1,125 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: production_secure_langfuse_2025
+      POSTGRES_DB: langfuse
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass production_secure_redis_2025
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ClickHouse for Langfuse v3
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.11
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: langfuse
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: production_secure_clickhouse_2025
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Langfuse v3 with ClickHouse
+  langfuse:
+    image: langfuse/langfuse:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:production_secure_langfuse_2025@postgres:5432/langfuse
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: production_secure_clickhouse_2025
+      REDIS_URL: redis://:production_secure_redis_2025@redis:6379
+      NEXTAUTH_SECRET: production_nextauth_secret_2025_secure_key
+      SALT: production_salt_2025_secure_key
+      ENCRYPTION_KEY: production_encryption_2025_secure_key_32bytes
+      LANGFUSE_DEFAULT_PROJECT_ID: default-project-production-2025
+      LANGFUSE_DEFAULT_PROJECT_SECRET: project-secret-production-2025
+      LANGFUSE_ALLOWED_ORIGINS: "http://localhost:3001,http://localhost:3000"
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Real-Time Dashboard
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    restart: unless-stopped
+    depends_on:
+      langfuse:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+      - "3002:3002"
+    environment:
+      NODE_ENV: production
+      LANGFUSE_PUBLIC_KEY: pk-lf-1752405467441-dwcthajdz-production
+      LANGFUSE_SECRET_KEY: sk-lf-1752405467441-dwcthajdz-production-secure
+      LANGFUSE_HOST: http://langfuse:3000
+      LANGFUSE_ENABLED: "true"
+      DASHBOARD_PORT: 3001
+      WEBSOCKET_PORT: 3002
+      ENABLE_REAL_TIME: "true"
+      SWARM_ID: swarm_1752405507302_3d1en3cv8
+    volumes:
+      - dashboard_data:/data
+      - ./shared/langfuse-wrapper:/app/langfuse-wrapper:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+  clickhouse_data:
+  dashboard_data:
+
+networks:
+  default:
+    name: swarm-dashboard-network

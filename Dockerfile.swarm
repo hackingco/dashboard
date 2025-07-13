@@ -1,0 +1,183 @@
+# Multi-stage Dockerfile for Swarm Services
+
+# Base stage with common dependencies
+FROM node:18-alpine AS base
+WORKDIR /app
+RUN apk add --no-cache curl bash sqlite
+
+# Copy package files for dependency installation
+COPY package*.json ./
+COPY shared/langfuse-wrapper/package*.json ./shared/langfuse-wrapper/
+RUN npm ci --production
+
+# Development dependencies stage
+FROM base AS development
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Manager stage
+FROM base AS manager
+COPY --from=development /app/dist ./dist
+COPY --from=development /app/shared ./shared
+COPY --from=development /app/apps/manager ./apps/manager
+
+# Create necessary directories
+RUN mkdir -p /app/data/.swarm
+
+# Install manager dependencies
+WORKDIR /app/apps/manager
+RUN npm ci --production
+
+# Copy manager configuration
+COPY apps/manager/src ./src
+COPY apps/manager/package*.json ./
+
+# Build manager
+RUN npm run build
+
+# Manager startup script
+COPY <<EOF /app/start-manager.sh
+#!/bin/bash
+set -e
+
+echo "Starting Swarm Manager..."
+echo "Creating data directories..."
+mkdir -p /app/data/.swarm
+mkdir -p /app/data/logs
+
+echo "Initializing Langfuse wrapper..."
+cd /app/shared/langfuse-wrapper
+npm run build
+
+echo "Starting manager service..."
+cd /app/apps/manager
+exec npm start
+EOF
+
+RUN chmod +x /app/start-manager.sh
+
+EXPOSE 8001
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:8001/health || exit 1
+
+CMD ["/app/start-manager.sh"]
+
+# Worker stage
+FROM base AS worker
+COPY --from=development /app/dist ./dist
+COPY --from=development /app/shared ./shared
+COPY --from=development /app/apps/worker ./apps/worker
+
+# Create necessary directories
+RUN mkdir -p /app/data/.swarm
+
+# Install worker dependencies
+WORKDIR /app/apps/worker
+RUN npm ci --production
+
+# Copy worker configuration
+COPY apps/worker/src ./src
+COPY apps/worker/package*.json ./
+
+# Build worker
+RUN npm run build
+
+# Worker startup script
+COPY <<EOF /app/start-worker.sh
+#!/bin/bash
+set -e
+
+echo "Starting Swarm Worker..."
+echo "Creating data directories..."
+mkdir -p /app/data/.swarm
+mkdir -p /app/data/logs
+
+echo "Waiting for manager to be ready..."
+until curl -f "\${MANAGER_URL}/health" > /dev/null 2>&1; do
+  echo "Waiting for manager at \${MANAGER_URL}..."
+  sleep 5
+done
+
+echo "Manager is ready. Initializing Langfuse wrapper..."
+cd /app/shared/langfuse-wrapper
+npm run build
+
+echo "Starting worker service..."
+cd /app/apps/worker
+exec npm start
+EOF
+
+RUN chmod +x /app/start-worker.sh
+
+EXPOSE 8002 8003
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:\${PORT:-8002}/health || exit 1
+
+CMD ["/app/start-worker.sh"]
+
+# Test runner stage
+FROM base AS test-runner
+COPY --from=development /app/dist ./dist
+COPY --from=development /app/shared ./shared
+COPY --from=development /app/tests ./tests
+
+# Install test dependencies
+RUN npm ci
+
+# Copy test configuration
+COPY tests ./tests
+COPY shared/langfuse-wrapper/tests ./shared/langfuse-wrapper/tests
+
+# Test runner script
+COPY <<EOF /app/run-tests.sh
+#!/bin/bash
+set -e
+
+echo "Starting Test Runner..."
+echo "Creating data directories..."
+mkdir -p /app/data/.swarm
+mkdir -p /app/data/logs
+mkdir -p /app/data/test-results
+
+echo "Waiting for services to be ready..."
+until curl -f "http://langfuse-server:3000/api/public/health" > /dev/null 2>&1; do
+  echo "Waiting for Langfuse server..."
+  sleep 5
+done
+
+until curl -f "http://swarm-manager:8001/health" > /dev/null 2>&1; do
+  echo "Waiting for swarm manager..."
+  sleep 5
+done
+
+echo "Services are ready. Running Langfuse wrapper tests..."
+
+cd /app/shared/langfuse-wrapper
+
+# Run unit tests
+echo "Running unit tests..."
+npm run test:unit
+
+# Run integration tests
+echo "Running integration tests..."
+npm run test:integration
+
+# Run performance tests
+echo "Running performance tests..."
+npm run test:performance
+
+# Run comprehensive tests
+echo "Running comprehensive tests..."
+npm run test:comprehensive
+
+# Generate test summary
+echo "Generating test summary..."
+npm run test:coverage
+
+echo "All tests completed successfully!"
+EOF
+
+RUN chmod +x /app/run-tests.sh
+
+CMD ["/app/run-tests.sh"]
