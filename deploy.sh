@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Backward Compatibility Wrapper for Quick Deploy
+# Backward Compatibility Wrapper for Deploy
 # This script redirects to the new unified deployment system
 
-echo "⚠️  DEPRECATED: quick-deploy.sh has been moved and improved"
+echo "⚠️  DEPRECATED: deploy.sh has been moved and improved"
 echo "📍 New location: ./scripts/unified-deploy.sh"
 echo "🔗 Redirecting to new deployment script..."
 echo ""

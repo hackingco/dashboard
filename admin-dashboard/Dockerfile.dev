@@ -1,0 +1,63 @@
+# Development Dockerfile for Admin Dashboard
+# Optimized for Vite HMR and fast rebuilds
+
+ARG NODE_VERSION=20-alpine
+FROM node:${NODE_VERSION} AS base
+
+# Install system dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    curl \
+    bash \
+    git \
+    && npm install -g pnpm@latest \
+    && node -v && npm -v && pnpm -v
+
+# Create app directory
+WORKDIR /app
+
+# Enable pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Configure pnpm for better caching
+ENV PNPM_HOME="/root/.pnpm-store" \
+    PNPM_STORE_DIR="/root/.pnpm-store" \
+    PATH="$PNPM_HOME:$PATH"
+
+# Copy workspace configuration files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+
+# Copy all package.json files
+COPY admin-dashboard/package.json ./admin-dashboard/
+COPY shared/types/package.json ./shared/types/
+COPY shared/utils/package.json ./shared/utils/
+
+# Install dependencies with cache mount
+RUN --mount=type=cache,target=/root/.pnpm-store \
+    pnpm install --frozen-lockfile --prefer-offline
+
+# Copy source code (will be overridden by volume mount)
+COPY . .
+
+# Build shared packages if needed
+RUN if [ -d "shared/types" ]; then pnpm --filter @swarm/types build || true; fi && \
+    if [ -d "shared/utils" ]; then pnpm --filter @swarm/utils build || true; fi
+
+# Set working directory to dashboard
+WORKDIR /app/admin-dashboard
+
+# Expose ports (3000 for app, 3001 for HMR)
+EXPOSE 3000 3001
+
+# Environment for better error messages
+ENV NODE_ENV=development \
+    VITE_PRESERVE_SYMLINKS=true
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:3000 || exit 1
+
+# Vite dev server with host binding for Docker
+CMD ["pnpm", "run", "dev", "--host", "0.0.0.0"]

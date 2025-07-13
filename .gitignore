@@ -91,6 +91,16 @@ temp/
 scripts/output/
 scripts/logs/
 scripts/*.log
+scripts/legacy-cleanup-*/
+
+# Auto-generated and temporary scripts
+*-temp.sh
+*-backup.sh
+*-old.sh
+quick-*.sh
+deploy-*.sh
+test-*.js
+cors-proxy-*.js
 
 # Test artifacts
 test-results/

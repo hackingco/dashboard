@@ -1,0 +1,312 @@
+version: '3.8'
+
+x-build-cache: &build-cache
+  cache_from:
+    - type=local,src=/tmp/.buildx-cache
+  cache_to:
+    - type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+x-common-env: &common-env
+  NODE_ENV: development
+  NODE_OPTIONS: --max-old-space-size=4096
+  LOG_LEVEL: debug
+  FORCE_COLOR: 1
+
+services:
+  # Redis with persistence and monitoring
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./config/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: >
+      redis-server 
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --timeout 300
+      --loglevel debug
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Manager API Service with hot reload
+  manager:
+    build:
+      context: .
+      dockerfile: apps/manager/Dockerfile.dev
+      args:
+        - NODE_VERSION=20-alpine
+      <<: *build-cache
+    ports:
+      - "8080:8080"
+      - "9229:9229"  # Node.js debugger
+    environment:
+      <<: *common-env
+      PORT: 8080
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/swarm_dev}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-key-change-in-production}
+      FLY_API_TOKEN: ${FLY_API_TOKEN}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+      DASHBOARD_URL: http://localhost:3000
+      # Development specific
+      DEBUG: express:*,swarm:*
+      TSX_WATCH: true
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-false}
+      WATCHPACK_POLLING: ${WATCHPACK_POLLING:-false}
+    volumes:
+      # Source code with hot reload
+      - ./apps/manager:/app/apps/manager:delegated
+      - ./shared:/app/shared:delegated
+      - ./.swarm:/app/.swarm:delegated
+      - ./.hive-mind:/app/.hive-mind:delegated
+      # Exclude node_modules and build artifacts
+      - /app/apps/manager/node_modules
+      - /app/apps/manager/dist
+      - /app/node_modules
+      # Shared cache volumes for faster rebuilds
+      - pnpm-store:/root/.pnpm-store
+      - tsx-cache:/root/.tsx
+      - build-cache:/app/.cache
+    networks:
+      - swarm-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        cd /app &&
+        pnpm install --frozen-lockfile &&
+        cd apps/manager &&
+        pnpm run dev
+      "
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/manager/src
+          target: /app/apps/manager/src
+        - action: rebuild
+          path: ./apps/manager/package.json
+        - action: sync
+          path: ./shared
+          target: /app/shared
+
+  # Admin Dashboard with Vite HMR
+  dashboard:
+    build:
+      context: .
+      dockerfile: admin-dashboard/Dockerfile.dev
+      args:
+        - NODE_VERSION=20-alpine
+      <<: *build-cache
+    ports:
+      - "3000:3000"
+      - "3001:3001"  # Vite HMR port
+    environment:
+      <<: *common-env
+      VITE_API_URL: http://localhost:8080
+      VITE_WS_URL: ws://localhost:8080
+      # Vite development specific
+      VITE_PRESERVE_SYMLINKS: true
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-false}
+    volumes:
+      # Source code with hot reload
+      - ./admin-dashboard:/app/admin-dashboard:delegated
+      - ./shared:/app/shared:delegated
+      # Exclude node_modules and build artifacts
+      - /app/admin-dashboard/node_modules
+      - /app/admin-dashboard/dist
+      - /app/node_modules
+      # Shared cache volumes
+      - pnpm-store:/root/.pnpm-store
+      - vite-cache:/app/.vite
+      - build-cache:/app/.cache
+    networks:
+      - swarm-network
+    command: >
+      sh -c "
+        cd /app &&
+        pnpm install --frozen-lockfile &&
+        cd admin-dashboard &&
+        pnpm run dev --host 0.0.0.0
+      "
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    develop:
+      watch:
+        - action: sync
+          path: ./admin-dashboard/src
+          target: /app/admin-dashboard/src
+        - action: rebuild
+          path: ./admin-dashboard/package.json
+
+  # PostgreSQL with optimizations
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: swarm_dev
+      # Performance tuning for development
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+      POSTGRES_HOST_AUTH_METHOD: trust
+      # PostgreSQL configuration
+      POSTGRES_MAX_CONNECTIONS: 200
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
+      POSTGRES_CHECKPOINT_COMPLETION_TARGET: 0.9
+      POSTGRES_WAL_BUFFERS: 16MB
+      POSTGRES_DEFAULT_STATISTICS_TARGET: 100
+      POSTGRES_RANDOM_PAGE_COST: 1.1
+      POSTGRES_EFFECTIVE_IO_CONCURRENCY: 200
+      POSTGRES_WORK_MEM: 4MB
+      POSTGRES_MIN_WAL_SIZE: 1GB
+      POSTGRES_MAX_WAL_SIZE: 4GB
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./scripts/dev-seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      - ./config/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d swarm_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.track=all
+      -c log_statement=all
+      -c log_duration=on
+
+  # Redis Commander for debugging
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      REDIS_HOSTS: local:redis:6379
+      HTTP_USER: admin
+      HTTP_PASSWORD: admin
+    ports:
+      - "8081:8081"
+    networks:
+      - swarm-network
+    depends_on:
+      - redis
+    profiles:
+      - debug
+
+  # pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - swarm-network
+    depends_on:
+      - postgres
+    profiles:
+      - debug
+    restart: unless-stopped
+
+  # Mailhog for email testing
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"  # SMTP server
+      - "8025:8025"  # Web UI
+    networks:
+      - swarm-network
+    profiles:
+      - debug
+
+  # Optional: BullMQ Board for queue monitoring
+  bullboard:
+    image: deadly0/bull-board:latest
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+    ports:
+      - "3030:3000"
+    networks:
+      - swarm-network
+    depends_on:
+      - redis
+    profiles:
+      - debug
+
+networks:
+  swarm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  redis-data:
+    driver: local
+  postgres-data:
+    driver: local
+  pgadmin-data:
+    driver: local
+  # Cache volumes for faster builds
+  pnpm-store:
+    driver: local
+  vite-cache:
+    driver: local
+  tsx-cache:
+    driver: local
+  build-cache:
+    driver: local
