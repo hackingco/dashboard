@@ -183,7 +183,7 @@ router.get('/health', async (req, res) => {
     logger.error('Observability health check failed', { error });
     res.status(500).json({ 
       status: 'error',
-      error: error.message 
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });

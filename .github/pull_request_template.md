@@ -1,60 +1,187 @@
-## Summary
+# Pull Request
+
+## 📋 Description
+
 <!-- Provide a brief description of the changes in this PR -->
 
-## Changes
-<!-- List the main changes/features/fixes included in this PR -->
-- 
-- 
-- 
+## 🎯 Type of Change
 
-## Testing
-<!-- Describe how you tested these changes -->
-- [ ] Unit tests pass
-- [ ] Integration tests pass
-- [ ] Smoke tests pass
+<!-- Mark the relevant option with an "x" -->
+
+- [ ] 🐛 Bug fix (non-breaking change which fixes an issue)
+- [ ] ✨ New feature (non-breaking change which adds functionality)
+- [ ] 💥 Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] 📚 Documentation update
+- [ ] 🔧 Refactoring (no functional changes)
+- [ ] ⚡ Performance improvement
+- [ ] 🧪 Test updates
+- [ ] 🏗️ Infrastructure/build changes
+
+## 🔗 Related Issues
+
+<!-- Link to the issue(s) this PR addresses -->
+
+Fixes #<!-- issue number -->
+Related to #<!-- issue number -->
+
+## 🧪 Testing
+
+<!-- Describe the tests you ran and provide instructions for reviewers -->
+
+### Test Coverage
+- [ ] Unit tests added/updated
+- [ ] Integration tests added/updated
+- [ ] E2E tests added/updated
 - [ ] Manual testing completed
 
-## Observability & Monitoring
-<!-- Include links to observability traces and metrics -->
+### Test Instructions
+```bash
+# Commands to test this PR
+pnpm test
+pnpm test:integration
+pnpm test:e2e
+```
 
-### Langfuse Traces
-<!-- Replace with actual trace URLs from your testing -->
-- [ ] API Call Traces: [View in Langfuse](https://cloud.langfuse.com/project/YOUR_PROJECT/traces?search=CORRELATION_ID)
-- [ ] Token Usage & Cost Analysis: [View Metrics](https://cloud.langfuse.com/project/YOUR_PROJECT/metrics)
+### Test Environment
+- [ ] Tested locally
+- [ ] Tested in staging environment
+- [ ] Tested in CI/CD pipeline
 
-### TrustGraph Visualization
-- [ ] Request Flow DAG: [View Graph](YOUR_TRUSTGRAPH_URL)
-- [ ] WebSocket Broadcast Nodes: Verified in graph
-- [ ] API Call Edges: Properly connected
+## 📊 Performance Impact
 
-### Real-time Monitoring
-- [ ] WebSocket connections tested and stable
-- [ ] Supabase real-time events flowing correctly
-- [ ] Machine health checks reaching "passing" state
+<!-- If applicable, describe any performance implications -->
 
-### Performance Metrics
-<!-- Include any relevant performance data -->
-- API Latency: 
-- Token Consumption: 
-- Cost Estimate: 
-- WebSocket Message Throughput: 
+- [ ] No performance impact
+- [ ] Positive performance impact
+- [ ] Negative performance impact (explain below)
+- [ ] Performance impact unknown/needs testing
 
-## Screenshots/Logs
-<!-- If applicable, add screenshots or relevant log snippets -->
+### Performance Details
+<!-- Provide details if there's a performance impact -->
 
-## Checklist
-- [ ] Code follows project style guidelines
-- [ ] Self-review completed
-- [ ] Comments added for complex logic
-- [ ] Documentation updated if needed
-- [ ] No console.log statements left in production code
-- [ ] Environment variables documented
-- [ ] Observability hooks properly integrated
-- [ ] Error handling and logging implemented
+## 🔒 Security Considerations
 
-## Related Issues
-<!-- Link any related issues -->
-Closes #
+<!-- Describe any security implications -->
 
-## Additional Notes
-<!-- Any additional context or notes for reviewers -->
+- [ ] No security impact
+- [ ] Security improvements
+- [ ] Potential security concerns (explain below)
+- [ ] Security review required
+
+### Security Details
+<!-- Provide details if there are security implications -->
+
+## 📱 UI/UX Changes
+
+<!-- If this PR includes UI changes, provide screenshots or descriptions -->
+
+### Before
+<!-- Screenshots or description of the current behavior -->
+
+### After
+<!-- Screenshots or description of the new behavior -->
+
+## 📖 Documentation
+
+<!-- Check all that apply -->
+
+- [ ] Code is self-documenting
+- [ ] Added/updated JSDoc comments
+- [ ] Updated README files
+- [ ] Updated API documentation
+- [ ] Added/updated user documentation
+- [ ] No documentation needed
+
+## ✅ Checklist
+
+<!-- Ensure all items are completed before requesting review -->
+
+### Code Quality
+- [ ] Code follows the style guidelines
+- [ ] Self-review of code completed
+- [ ] Code is properly commented
+- [ ] No hardcoded secrets or sensitive information
+- [ ] Error handling is implemented
+- [ ] Logging is appropriate
+
+### Testing
+- [ ] Tests pass locally
+- [ ] New tests cover the changes
+- [ ] Existing tests still pass
+- [ ] Manual testing completed
+
+### Dependencies
+- [ ] No new dependencies added
+- [ ] New dependencies are necessary and secure
+- [ ] Dependencies updated to latest secure versions
+- [ ] License compatibility verified
+
+### Database Changes
+- [ ] No database changes
+- [ ] Database migrations created
+- [ ] Migrations are reversible
+- [ ] Data integrity maintained
+- [ ] Performance impact assessed
+
+### Breaking Changes
+- [ ] No breaking changes
+- [ ] Breaking changes documented
+- [ ] Migration guide provided
+- [ ] Deprecation warnings added
+
+## 🔍 Review Guidelines
+
+### For Reviewers
+Please check:
+- [ ] Code quality and style
+- [ ] Test coverage and quality
+- [ ] Security implications
+- [ ] Performance impact
+- [ ] Documentation completeness
+- [ ] Breaking change handling
+
+### Review Focus Areas
+<!-- Highlight specific areas that need extra attention -->
+
+## 📋 Deployment Notes
+
+<!-- Any special considerations for deployment -->
+
+- [ ] No special deployment requirements
+- [ ] Requires environment variable changes
+- [ ] Requires database migrations
+- [ ] Requires service restarts
+- [ ] Requires infrastructure changes
+
+### Deployment Steps
+<!-- List any special deployment steps -->
+
+1. Step 1
+2. Step 2
+3. Step 3
+
+## 🚀 Post-Merge Actions
+
+<!-- Actions to take after this PR is merged -->
+
+- [ ] Update related documentation
+- [ ] Notify stakeholders
+- [ ] Monitor metrics/logs
+- [ ] Create follow-up issues
+- [ ] Update project board
+
+## 📝 Additional Notes
+
+<!-- Any additional information for reviewers -->
+
+---
+
+**Reviewer Assignment:**
+<!-- Tag specific reviewers if needed -->
+@hackingco
+
+**Priority Level:**
+<!-- Mark one -->
+- [ ] 🔴 High (Critical fix or blocking feature)
+- [ ] 🟡 Medium (Important improvement)
+- [ ] 🟢 Low (Nice-to-have enhancement)
