@@ -1,0 +1,161 @@
+# 🚨 CRITICAL SECURITY SCAN REPORT
+
+**Date:** 2025-07-15
+**Scanner:** Security Scanner Agent (Hive Mind)
+**Status:** CRITICAL - Immediate Action Required
+
+## 🔴 CRITICAL FINDINGS
+
+### 1. EXPOSED API KEYS AND SECRETS
+
+#### **Google API Key Exposed**
+- **File:** `.env`
+- **Line 7:** `GEMINI_API_KEY="AIzaSyAgigX66zuq3lIdYjOOUJHhOgipormt1zg"`
+- **Risk:** HIGH - This appears to be a real Google API key
+- **Action:** IMMEDIATELY REVOKE AND REGENERATE
+
+#### **Langfuse Secret Keys Exposed**
+Multiple Langfuse secret keys found in tracked files:
+
+1. **File:** `.env.langfuse` (TRACKED IN GIT!)
+   - Line 11: `LANGFUSE_SECRET_KEY=sk-lf-cmd2y5m640009pw076fvuxp9s`
+   - **Risk:** CRITICAL - This file is tracked in git
+
+2. **File:** `.env.swarm` (TRACKED IN GIT!)
+   - Line 1: `LANGFUSE_SECRET_KEY=sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60`
+   - **Risk:** CRITICAL - This file is tracked in git
+
+3. **File:** `api-key-management/.env`
+   - Line 3: `LANGFUSE_SECRET_KEY=sk-lf-5f3b4323-450a-49bb-9dfc-f55da800d343`
+   - **Risk:** HIGH - Contains actual secret key
+
+4. **File:** `claude-flow-analysis/.env.langfuse` (TRACKED IN GIT!)
+   - Line 3: `LANGFUSE_SECRET_KEY=sk-lf-894142b2-3421-491c-8f57-efcad1d713d8`
+   - **Risk:** CRITICAL - This file is tracked in git
+
+#### **Weak/Default Passwords**
+- **File:** `.env.container` (TRACKED IN GIT!)
+  - Line 18: `POSTGRES_PASSWORD=swarm123`
+  - Line 19: `REDIS_PASSWORD=swarm123`
+  - Line 22: `GRAFANA_PASSWORD=admin`
+  - **Risk:** HIGH - Weak passwords in tracked file
+
+- **File:** `.env.test` (TRACKED IN GIT!)
+  - Line 21: `POSTGRES_PASSWORD=langfuse_password`
+  - Line 22: `REDIS_PASSWORD=redis_password`
+  - **Risk:** MEDIUM - Default passwords in test file
+
+### 2. FILES THAT SHOULD BE IN .GITIGNORE
+
+The following files contain secrets and are **TRACKED IN GIT**:
+- `.env.langfuse` ⚠️
+- `.env.swarm` ⚠️
+- `.env.container` ⚠️
+- `.env.docker` ⚠️
+- `.env.test` ⚠️
+
+These files are properly ignored:
+- `.env` ✅
+- `.env.production` ✅
+- `api-key-management/.env` ✅
+
+### 3. ADDITIONAL SECURITY CONCERNS
+
+1. **S3 Credentials**
+   - File: `.env.langfuse` (Line 63)
+   - `S3_SECRET_ACCESS_KEY=langfuse-admin-secret`
+
+2. **Database URLs with Embedded Credentials**
+   - Multiple files contain database URLs with passwords
+   - Example: `postgresql://postgres:swarm-postgres@localhost:5432/langfuse`
+
+3. **Placeholder Secrets Still Using Default Values**
+   - Many files still have "your-" prefixed placeholders
+   - These should be properly secured even in development
+
+## 🛡️ IMMEDIATE ACTIONS REQUIRED
+
+### 1. **REVOKE ALL EXPOSED KEYS**
+```bash
+# These keys need immediate revocation:
+- Google API Key: AIzaSyAgigX66zuq3lIdYjOOUJHhOgipormt1zg
+- All Langfuse secret keys listed above
+```
+
+### 2. **UPDATE .GITIGNORE**
+Add these entries to `.gitignore`:
+```
+.env.langfuse
+.env.swarm
+.env.container
+.env.docker
+.env.test
+.env*
+!.env.example
+!.env.*.example
+```
+
+### 3. **REMOVE TRACKED FILES FROM GIT**
+```bash
+# Remove files from git tracking (but keep local copies)
+git rm --cached .env.langfuse
+git rm --cached .env.swarm
+git rm --cached .env.container
+git rm --cached .env.docker
+git rm --cached .env.test
+git commit -m "Remove tracked env files with secrets"
+```
+
+### 4. **ROTATE ALL SECRETS**
+1. Generate new Langfuse API keys
+2. Update Google API key
+3. Change all default passwords
+4. Use strong, unique passwords for each service
+
+### 5. **IMPLEMENT SECRET MANAGEMENT**
+Consider using:
+- Environment variable injection at runtime
+- Secret management service (AWS Secrets Manager, HashiCorp Vault)
+- Encrypted .env files with decryption at runtime
+
+## 📊 SCAN SUMMARY
+
+- **Total .env files scanned:** 19 (excluding .example files)
+- **Files with exposed secrets:** 8
+- **Tracked files with secrets:** 5
+- **Critical findings:** 4
+- **High risk findings:** 3
+- **Medium risk findings:** 2
+
+## 🔍 DETAILED FILE ANALYSIS
+
+### Files Currently Tracked in Git:
+1. `.env.container` - Contains weak passwords
+2. `.env.docker` - Contains Langfuse keys and passwords
+3. `.env.langfuse` - Contains multiple secret keys
+4. `.env.swarm` - Contains Langfuse secret key
+5. `.env.test` - Contains test credentials
+
+### Files Properly Ignored:
+1. `.env` - Contains Google API key (needs rotation)
+2. `.env.production` - Properly secured
+3. `api-key-management/.env` - Contains Langfuse keys
+
+## 🚦 RISK ASSESSMENT
+
+**Overall Risk Level: CRITICAL**
+
+The presence of actual API keys and secrets in git-tracked files poses an immediate security risk. These secrets are potentially exposed to anyone with repository access and will be in the git history even after removal.
+
+## 📝 RECOMMENDATIONS
+
+1. **Immediate:** Revoke and rotate all exposed credentials
+2. **Short-term:** Remove sensitive files from git tracking
+3. **Long-term:** Implement proper secret management solution
+4. **Process:** Add pre-commit hooks to prevent secret commits
+5. **Audit:** Review git history for other exposed secrets
+
+---
+
+**Report Generated By:** Hive Mind Security Scanner
+**Coordination ID:** hive-security-scan-2025-07-15

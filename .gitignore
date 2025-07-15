@@ -24,6 +24,9 @@ lerna-debug.log*
 
 # Environment files
 .env
+.env.*
+!.env.example
+!.env.*.example
 .env.local
 .env.development.local
 .env.test.local
@@ -31,6 +34,11 @@ lerna-debug.log*
 .env.production
 .env.preview
 .env.staging
+.env.langfuse
+.env.swarm
+.env.container
+.env.docker
+.env.test
 
 # IDE
 .vscode/
@@ -119,3 +127,6 @@ private/
 *.key
 *.pem.bak
 auth-tokens.json
+.langfuse-keys/
+api-key-management/.env
+api-key-management/.langfuse-keys/
