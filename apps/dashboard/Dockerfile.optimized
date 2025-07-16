@@ -1,0 +1,58 @@
+# Multi-stage optimized build for Dashboard
+FROM node:18-alpine AS base
+
+# Dependencies stage
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Copy dependency files
+COPY package.json package-lock.json* ./
+# Use cache mount for npm packages
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps
+
+# Builder stage
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Set production build environment
+ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV production
+
+# Build with optimizations
+RUN npm run build && \
+    # Remove unnecessary files
+    rm -rf .next/cache && \
+    rm -rf node_modules/.cache
+
+# Runner stage - minimal production image
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copy only necessary files
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Create health check endpoint
+RUN mkdir -p ./public/api && \
+    echo '{"status":"ok"}' > ./public/api/health.json
+
+USER nextjs
+
+EXPOSE 3000
+ENV PORT 3000
+ENV HOSTNAME="0.0.0.0"
+
+# Start with optimized settings
+CMD ["node", "--max-old-space-size=1536", "server.js"]

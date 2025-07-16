@@ -1,0 +1,89 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'claude-flow-swarm'
+
+rule_files:
+  - "rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node Exporter
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # Redis Exporter
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # PostgreSQL Exporter
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  # Claude Flow Manager
+  - job_name: 'claude-flow-manager'
+    static_configs:
+      - targets: ['manager:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Claude Flow Dashboard
+  - job_name: 'claude-flow-dashboard'
+    static_configs:
+      - targets: ['dashboard:3000']
+    metrics_path: '/api/metrics'
+    scrape_interval: 30s
+
+  # Claude Flow Workers
+  - job_name: 'claude-flow-workers'
+    static_configs:
+      - targets: ['worker:9090']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Hive Mind
+  - job_name: 'hive-mind'
+    static_configs:
+      - targets: ['hive-mind:8888']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Langfuse
+  - job_name: 'langfuse'
+    static_configs:
+      - targets: ['langfuse:3000']
+    metrics_path: '/api/metrics'
+    scrape_interval: 30s
+
+  # NGINX
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx:80']
+    metrics_path: '/nginx_status'
+    scrape_interval: 30s
+
+  # Redis direct monitoring
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    scrape_interval: 30s
+
+  # PostgreSQL direct monitoring
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+    scrape_interval: 30s

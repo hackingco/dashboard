@@ -1,0 +1,137 @@
+version: '3.8'
+
+# Core Swarm Infrastructure - Base services required for all deployments
+# Use with: docker-compose -f docker-compose.swarm-core.yml up
+
+services:
+  # Redis - Core caching and pub/sub infrastructure
+  redis:
+    image: redis:7-alpine
+    container_name: swarm-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - swarm-redis-data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD:-swarm-redis}
+      --maxmemory ${REDIS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-swarm-redis}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # PostgreSQL - Core database infrastructure
+  postgres:
+    image: postgres:15-alpine
+    container_name: swarm-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-swarm-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-swarm_core}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - swarm-postgres-data:/var/lib/postgresql/data
+      - ./scripts/postgres/init-swarm-core.sql:/docker-entrypoint-initdb.d/00-init-swarm-core.sql:ro
+      - ./scripts/postgres/create-langfuse-db.sql:/docker-entrypoint-initdb.d/01-create-langfuse-db.sql:ro
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-swarm_core}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+
+  # Hive Mind - Swarm coordination and memory
+  hive-mind:
+    build:
+      context: .
+      dockerfile: Dockerfile.hive-mind
+      args:
+        NODE_ENV: ${NODE_ENV:-production}
+    container_name: swarm-hive-mind
+    ports:
+      - "${HIVE_MIND_PORT:-8888}:8888"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 8888
+      REDIS_URL: redis://:${REDIS_PASSWORD:-swarm-redis}@redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres}@postgres:5432/${POSTGRES_DB:-swarm_core}
+      HIVE_MIND_SECRET: ${HIVE_MIND_SECRET:-hive-mind-secret-key}
+      COORDINATION_TIMEOUT: ${COORDINATION_TIMEOUT:-30000}
+      SWARM_MAX_AGENTS: ${SWARM_MAX_AGENTS:-20}
+    volumes:
+      - hive-mind-data:/app/.hive-mind
+      - swarm-memory-data:/app/.swarm
+    networks:
+      - swarm-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+
+networks:
+  swarm-network:
+    name: swarm-network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+
+volumes:
+  swarm-redis-data:
+    name: swarm-redis-data
+    driver: local
+  swarm-postgres-data:
+    name: swarm-postgres-data
+    driver: local
+  hive-mind-data:
+    name: swarm-hive-mind-data
+    driver: local
+  swarm-memory-data:
+    name: swarm-memory-data
+    driver: local

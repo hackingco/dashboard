@@ -1,0 +1,10 @@
+{
+  "default": [
+    {
+      "key": "hook-test-final",
+      "value": "Hook tracing test completed successfully with all coordination protocols validated",
+      "namespace": "default",
+      "timestamp": 1752549966412
+    }
+  ]
+}

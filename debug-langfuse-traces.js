@@ -32,7 +32,7 @@ async function testConnectivity() {
 console.log('🔧 Step 2: Initializing Langfuse client...');
 
 const client = new Langfuse({
-  publicKey: 'pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20',
+  publicKey: 'pk-lf-REDACTED',
   secretKey: 'sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60',
   baseUrl: 'http://langfuse:3000',
   flushAt: 1,

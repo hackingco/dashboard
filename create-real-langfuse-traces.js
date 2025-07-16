@@ -10,7 +10,7 @@ const path = require('path');
 
 // Environment setup for Langfuse
 process.env.LANGFUSE_SECRET_KEY = 'sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60';
-process.env.LANGFUSE_PUBLIC_KEY = 'pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20';
+process.env.LANGFUSE_PUBLIC_KEY = 'pk-lf-REDACTED';
 process.env.LANGFUSE_HOST = 'http://localhost:3000';
 
 // Use the existing Langfuse wrapper

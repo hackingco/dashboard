@@ -1,0 +1,62 @@
+
+SERVICE DEPENDENCY REPORT
+Generated: 2025-07-14T15:42:47.433Z
+Overall Status: DEGRADED
+
+SUMMARY
+=======
+Total Services: 7
+Healthy: 0
+Unhealthy: 7
+Critical: 0
+
+SERVICES
+========
+
+cf-langfuse-server: CRITICAL
+  Container: Running
+  Health: Healthy
+  Dependencies:
+    cf-langfuse-db: healthy (286ms)
+    cf-clickhouse: healthy (391ms)
+    redis: error (0ms)
+
+langfuse-worker-built: DEGRADED
+  Container: Running
+  Health: Healthy
+  Dependencies:
+    cf-langfuse-db: healthy (240ms)
+    cf-clickhouse: healthy (271ms)
+    cf-analysis-redis: healthy (134ms)
+
+cf-langfuse-db: DEGRADED
+  Container: Running
+  Health: Healthy
+
+cf-clickhouse: DEGRADED
+  Container: Running
+  Health: Healthy
+
+cf-analysis-app: CRITICAL
+  Container: Running
+  Health: Healthy
+  Dependencies:
+    cf-analysis-postgres: error (0ms)
+    cf-analysis-redis: healthy (105ms)
+
+cf-analysis-postgres: DEGRADED
+  Container: Running
+  Health: Healthy
+
+cf-analysis-redis: DEGRADED
+  Container: Running
+  Health: Healthy
+
+RECOMMENDATIONS
+===============
+HIGH: Service cf-langfuse-server is in critical state
+Actions: Check container status, Verify dependencies, Review logs
+
+HIGH: Service cf-analysis-app is in critical state
+Actions: Check container status, Verify dependencies, Review logs
+

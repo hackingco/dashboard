@@ -1,0 +1,35 @@
+{
+  "timestamp": "2025-07-14T03:42:27Z",
+  "tests": {
+    "docker_availability": {
+      "status": "passed",
+      "message": "Docker and Compose available",
+      "details": "{\"docker_version\": \"Docker version 28.3.0, build 38b7060\", \"compose_version\": \"Docker Compose version v2.38.1-desktop.1\"}",
+      "timestamp": "2025-07-14T03:42:27Z"
+    },
+    "compose_file_validation": {
+      "status": "passed",
+      "message": "Compose files validated",
+      "details": "{\"docker-compose.yml\": \"invalid\",\"docker-compose.langfuse.yml\": \"invalid\",\"docker-compose.production.yml\": \"invalid\",\"docker-compose.development.yml\": \"invalid\"}",
+      "timestamp": "2025-07-14T03:42:27Z"
+    },
+    "environment_files": {
+      "status": "warning",
+      "message": "Some env files missing",
+      "details": "{\"found\": [\".env.langfuse.example\".env.docker.example\"], \"missing\": [\".env.example\"]}",
+      "timestamp": "2025-07-14T03:42:27Z"
+    },
+    "basic_stack": {
+      "status": "failed",
+      "message": "Image pull timeout",
+      "details": "",
+      "timestamp": "2025-07-14T03:42:27Z"
+    }
+  },
+  "summary": {
+    "total": 4,
+    "passed": 2,
+    "failed": 1,
+    "warnings": 1
+  }
+}

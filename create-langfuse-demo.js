@@ -2,7 +2,7 @@
 
 const axios = require('./testing-utils/node_modules/axios/dist/node/axios.cjs');
 
-const publicKey = 'pk-lf-104e1a3f-e976-41d9-aefc-99382633a15a';
+const publicKey = 'pk-lf-REDACTED';
 const secretKey = 'sk-lf-5e3c1f3e-6898-44a6-b041-df18ab0e9b35';
 const baseUrl = 'http://localhost:3000';
 

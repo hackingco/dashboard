@@ -1,294 +1,316 @@
 version: '3.8'
 
+# Langfuse v3 Integration Module - Advanced observability with ClickHouse
+# Use with core: docker-compose -f docker-compose.swarm-core.yml -f docker-compose.langfuse.yml up
+# Langfuse v3 features: ClickHouse analytics, Worker processing, Redis queuing, S3 storage
+
 services:
-  # PostgreSQL Database for Langfuse
-  postgres:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: langfuse
-      POSTGRES_PASSWORD: langfuse_secret
-      POSTGRES_DB: langfuse
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./config/postgres/init-langfuse.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  # ClickHouse - Analytical database for traces, observations, and scores
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: swarm-clickhouse
     ports:
-      - "5432:5432"
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"  # HTTP API
+      - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"  # Native protocol for migrations
+      - "${CLICKHOUSE_MYSQL_PORT:-9004}:9004"   # MySQL compatibility
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:-default}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    networks:
+      - swarm-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
       interval: 30s
       timeout: 10s
       retries: 5
-    networks:
-      - langfuse-network
-
-  # Langfuse Server (using v2 for compatibility)
-  langfuse-server:
-    image: langfuse/langfuse:2
+      start_period: 60s
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://langfuse:langfuse_secret@postgres:5432/langfuse
-      NEXTAUTH_URL: http://localhost:3050
-      NEXTAUTH_SECRET: langfuse_nextauth_secret_change_in_production
-      SALT: langfuse_salt_change_in_production
-      TELEMETRY_ENABLED: "false"
-      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
-      ENCRYPTION_KEY: langfuse_encryption_key_change_in_production
-    ports:
-      - "3050:3000"
-    volumes:
-      - langfuse_data:/app/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - langfuse-network
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
 
-  # Swarm Manager Service
-  swarm-manager:
-    build:
-      context: .
-      dockerfile: Dockerfile.swarm
-      target: manager
-    restart: unless-stopped
-    depends_on:
-      langfuse-server:
-        condition: service_healthy
-    environment:
-      NODE_ENV: development
-      LANGFUSE_PUBLIC_KEY: pk-lf-1234567890abcdef
-      LANGFUSE_SECRET_KEY: sk-lf-fedcba0987654321
-      LANGFUSE_HOST: http://langfuse-server:3000
-      SWARM_ID: docker-test-swarm
-      AGENT_ID: manager-001
-      AGENT_ROLE: manager
-      LANGFUSE_COORDINATION_ENABLED: "true"
-      LANGFUSE_MEMORY_DB_PATH: /app/data/.swarm/memory.db
-      LANGFUSE_FEATURE_AUTO_TRACING: "true"
-      LANGFUSE_FEATURE_SPAN_ENRICHMENT: "true"
-      LANGFUSE_FEATURE_TOKEN_TRACKING: "true"
-      LANGFUSE_FEATURE_MEMORY_COORDINATION: "true"
-      LANGFUSE_FEATURE_HOOK_INTERCEPTION: "true"
-      LANGFUSE_FEATURE_PERFORMANCE_MONITORING: "true"
-      LANGFUSE_LOG_LEVEL: debug
-      LANGFUSE_COLLECT_METRICS: "true"
-      LANGFUSE_TRACK_TOKEN_COSTS: "true"
-      PORT: 8001
-    ports:
-      - "8001:8001"
-    volumes:
-      - swarm_data:/app/data
-      - ./shared/langfuse-wrapper:/app/langfuse-wrapper:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - langfuse-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Swarm Worker Service 1
-  swarm-worker-1:
-    build:
-      context: .
-      dockerfile: Dockerfile.swarm
-      target: worker
-    restart: unless-stopped
-    depends_on:
-      swarm-manager:
-        condition: service_healthy
-    environment:
-      NODE_ENV: development
-      LANGFUSE_PUBLIC_KEY: pk-lf-1234567890abcdef
-      LANGFUSE_SECRET_KEY: sk-lf-fedcba0987654321
-      LANGFUSE_HOST: http://langfuse-server:3000
-      SWARM_ID: docker-test-swarm
-      AGENT_ID: worker-001
-      AGENT_ROLE: worker
-      MANAGER_URL: http://swarm-manager:8001
-      LANGFUSE_COORDINATION_ENABLED: "true"
-      LANGFUSE_MEMORY_DB_PATH: /app/data/.swarm/memory.db
-      LANGFUSE_FEATURE_AUTO_TRACING: "true"
-      LANGFUSE_FEATURE_SPAN_ENRICHMENT: "true"
-      LANGFUSE_FEATURE_TOKEN_TRACKING: "true"
-      LANGFUSE_FEATURE_MEMORY_COORDINATION: "true"
-      LANGFUSE_FEATURE_HOOK_INTERCEPTION: "true"
-      LANGFUSE_FEATURE_PERFORMANCE_MONITORING: "true"
-      LANGFUSE_LOG_LEVEL: debug
-      LANGFUSE_COLLECT_METRICS: "true"
-      LANGFUSE_TRACK_TOKEN_COSTS: "true"
-      PORT: 8002
-    ports:
-      - "8002:8002"
-    volumes:
-      - swarm_data:/app/data
-      - ./shared/langfuse-wrapper:/app/langfuse-wrapper:ro
-    networks:
-      - langfuse-network
-
-  # Swarm Worker Service 2
-  swarm-worker-2:
-    build:
-      context: .
-      dockerfile: Dockerfile.swarm
-      target: worker
-    restart: unless-stopped
-    depends_on:
-      swarm-manager:
-        condition: service_healthy
-    environment:
-      NODE_ENV: development
-      LANGFUSE_PUBLIC_KEY: pk-lf-1234567890abcdef
-      LANGFUSE_SECRET_KEY: sk-lf-fedcba0987654321
-      LANGFUSE_HOST: http://langfuse-server:3000
-      SWARM_ID: docker-test-swarm
-      AGENT_ID: worker-002
-      AGENT_ROLE: worker
-      MANAGER_URL: http://swarm-manager:8001
-      LANGFUSE_COORDINATION_ENABLED: "true"
-      LANGFUSE_MEMORY_DB_PATH: /app/data/.swarm/memory.db
-      LANGFUSE_FEATURE_AUTO_TRACING: "true"
-      LANGFUSE_FEATURE_SPAN_ENRICHMENT: "true"
-      LANGFUSE_FEATURE_TOKEN_TRACKING: "true"
-      LANGFUSE_FEATURE_MEMORY_COORDINATION: "true"
-      LANGFUSE_FEATURE_HOOK_INTERCEPTION: "true"
-      LANGFUSE_FEATURE_PERFORMANCE_MONITORING: "true"
-      LANGFUSE_LOG_LEVEL: debug
-      LANGFUSE_COLLECT_METRICS: "true"
-      LANGFUSE_TRACK_TOKEN_COSTS: "true"
-      PORT: 8003
-    ports:
-      - "8003:8003"
-    volumes:
-      - swarm_data:/app/data
-      - ./shared/langfuse-wrapper:/app/langfuse-wrapper:ro
-    networks:
-      - langfuse-network
-
-  # Test Runner Service
-  test-runner:
-    build:
-      context: .
-      dockerfile: Dockerfile.swarm
-      target: test-runner
-    depends_on:
-      langfuse-server:
-        condition: service_healthy
-      swarm-manager:
-        condition: service_healthy
-    environment:
-      NODE_ENV: test
-      LANGFUSE_PUBLIC_KEY: pk-lf-1234567890abcdef
-      LANGFUSE_SECRET_KEY: sk-lf-fedcba0987654321
-      LANGFUSE_HOST: http://langfuse-server:3000
-      SWARM_ID: docker-test-swarm
-      AGENT_ID: test-runner
-      AGENT_ROLE: tester
-      MANAGER_URL: http://swarm-manager:8001
-      LANGFUSE_COORDINATION_ENABLED: "true"
-      LANGFUSE_MEMORY_DB_PATH: /app/data/.swarm/memory.db
-      LANGFUSE_FEATURE_AUTO_TRACING: "true"
-      LANGFUSE_FEATURE_SPAN_ENRICHMENT: "true"
-      LANGFUSE_FEATURE_TOKEN_TRACKING: "true"
-      LANGFUSE_FEATURE_MEMORY_COORDINATION: "true"
-      LANGFUSE_FEATURE_HOOK_INTERCEPTION: "true"
-      LANGFUSE_FEATURE_PERFORMANCE_MONITORING: "true"
-      LANGFUSE_LOG_LEVEL: debug
-      LANGFUSE_COLLECT_METRICS: "true"
-      LANGFUSE_TRACK_TOKEN_COSTS: "true"
-      LANGFUSE_VERBOSE_TRACING: "true"
-    volumes:
-      - swarm_data:/app/data
-      - ./shared/langfuse-wrapper:/app/langfuse-wrapper:ro
-      - ./tests:/app/tests:ro
-    networks:
-      - langfuse-network
-    profiles:
-      - testing
-
-  # Redis for caching and coordination
+  # Redis - Queue management and caching for Langfuse v3
   redis:
     image: redis:7-alpine
-    restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass redis_secret
-    environment:
-      REDIS_PASSWORD: redis_secret
+    container_name: swarm-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-swarm-redis}
+    command: redis-server --requirepass ${REDIS_PASSWORD:-swarm-redis}
     volumes:
-      - redis_data:/data
-      - ./config/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis-data:/data
+    networks:
+      - swarm-network
     healthcheck:
       test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
       interval: 30s
       timeout: 10s
-      retries: 3
-    networks:
-      - langfuse-network
-
-  # Monitoring and Observability
-  prometheus:
-    image: prom/prometheus:latest
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Langfuse Web - Main application with v3 ClickHouse integration
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: swarm-langfuse
     ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    networks:
-      - langfuse-network
-    profiles:
-      - monitoring
-
-  # Grafana for visualizations
-  grafana:
-    image: grafana/grafana:latest
-    restart: unless-stopped
+      - "${LANGFUSE_PORT:-3001}:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: grafana_secret
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    ports:
-      - "3001:3000"
+      # PostgreSQL - Primary database for application data
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres}@postgres:5432/langfuse
+      
+      # ClickHouse v3 Configuration - Analytics database
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_CLUSTER_ENABLED: false
+      CLICKHOUSE_CLUSTER_NAME: ""
+      LANGFUSE_AUTO_CLICKHOUSE_MIGRATION_DISABLED: ${CLICKHOUSE_AUTO_MIGRATION_DISABLED:-false}
+      
+      # Redis Configuration - Queue and cache
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${REDIS_PASSWORD:-swarm-redis}
+      
+      # S3/Blob Storage Configuration (optional but recommended)
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-langfuse-storage}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      
+      # Authentication & Security
+      NEXTAUTH_URL: ${LANGFUSE_URL:-http://localhost:3001}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-your-secret-key-min-32-chars-long}
+      SALT: ${LANGFUSE_SALT:-your-salt-min-32-chars-long}
+      
+      # Langfuse v3 Configuration
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_EXPERIMENTAL:-true}
+      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
+      LANGFUSE_V3_ENABLED: true
+      
+      # Performance & Scaling (v3 optimized)
+      LANGFUSE_CACHE_TTL: ${LANGFUSE_CACHE_TTL:-3600}
+      LANGFUSE_MAX_INGESTION_BATCH_SIZE: ${LANGFUSE_BATCH_SIZE:-2000}
+      LANGFUSE_INGESTION_FLUSH_INTERVAL: ${LANGFUSE_FLUSH_INTERVAL:-3000}
+      LANGFUSE_WORKER_ENABLED: true
+      
+      # Integration settings
+      NEXTAUTH_PROVIDERS: ${LANGFUSE_AUTH_PROVIDERS:-credentials}
+      
+      # Security Headers
+      NEXT_PUBLIC_SECURE_HEADERS: ${LANGFUSE_SECURE_HEADERS:-true}
+      
     volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - langfuse-data:/app/.next/cache
+      - langfuse-uploads:/app/uploads
     networks:
-      - langfuse-network
+      - swarm-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Langfuse Worker v3 - Background processing for high-throughput event ingestion
+  langfuse-worker:
+    image: langfuse/langfuse:latest
+    container_name: swarm-langfuse-worker
+    environment:
+      # PostgreSQL - Primary database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres}@postgres:5432/langfuse
+      
+      # ClickHouse v3 Configuration
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_CLUSTER_ENABLED: false
+      CLICKHOUSE_CLUSTER_NAME: ""
+      
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${REDIS_PASSWORD:-swarm-redis}
+      
+      # S3/Blob Storage Configuration
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-langfuse-storage}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      
+      # Worker v3 Configuration
+      LANGFUSE_WORKER_ENABLED: true
+      WORKER_CONCURRENCY: ${LANGFUSE_WORKER_CONCURRENCY:-10}
+      
+      # v3 Processing configuration
+      LANGFUSE_CACHE_TTL: ${LANGFUSE_CACHE_TTL:-3600}
+      LANGFUSE_MAX_INGESTION_BATCH_SIZE: ${LANGFUSE_BATCH_SIZE:-5000}
+      LANGFUSE_INGESTION_FLUSH_INTERVAL: ${LANGFUSE_FLUSH_INTERVAL:-2000}
+      
+      # Security
+      SALT: ${LANGFUSE_SALT:-your-salt-min-32-chars-long}
+      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
+      
+    volumes:
+      - langfuse-worker-data:/app/.next/cache
+    networks:
+      - swarm-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      langfuse:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: ${LANGFUSE_WORKER_REPLICAS:-2}
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     profiles:
-      - monitoring
+      - scaling
+
+  # Langfuse Ingestion API v3 - Ultra high-throughput trace ingestion with ClickHouse
+  langfuse-ingestion:
+    image: langfuse/langfuse:latest
+    container_name: swarm-langfuse-ingestion
+    ports:
+      - "${LANGFUSE_INGESTION_PORT:-3002}:3000"
+    environment:
+      # PostgreSQL - Primary database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres}@postgres:5432/langfuse
+      
+      # ClickHouse v3 Configuration
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+      
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${REDIS_PASSWORD:-swarm-redis}
+      
+      # S3/Blob Storage Configuration
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-langfuse-storage}
+      
+      # v3 Ingestion-specific mode
+      LANGFUSE_INGESTION_ENABLED: true
+      
+      # v3 High-throughput configuration
+      LANGFUSE_MAX_INGESTION_BATCH_SIZE: ${LANGFUSE_BATCH_SIZE:-10000}
+      LANGFUSE_INGESTION_FLUSH_INTERVAL: ${LANGFUSE_FLUSH_INTERVAL:-1000}
+      LANGFUSE_INGESTION_WORKERS: ${LANGFUSE_INGESTION_WORKERS:-20}
+      
+      # Security
+      SALT: ${LANGFUSE_SALT:-your-salt-min-32-chars-long}
+      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
+      
+      # v3 Performance optimization
+      NODE_OPTIONS: "--max-old-space-size=4096"
+      
+    networks:
+      - swarm-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      replicas: ${LANGFUSE_INGESTION_REPLICAS:-3}
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    profiles:
+      - high-performance
 
 volumes:
-  postgres_data:
+  # Langfuse application volumes
+  langfuse-data:
+    name: swarm-langfuse-data
     driver: local
-  langfuse_data:
+  langfuse-uploads:
+    name: swarm-langfuse-uploads
     driver: local
-  swarm_data:
+  langfuse-worker-data:
+    name: swarm-langfuse-worker-data
     driver: local
-  redis_data:
+  
+  # ClickHouse v3 volumes
+  clickhouse-data:
+    name: swarm-clickhouse-data
     driver: local
-  prometheus_data:
+  clickhouse-logs:
+    name: swarm-clickhouse-logs
     driver: local
-  grafana_data:
+  
+  # Redis volumes
+  redis-data:
+    name: swarm-redis-data
     driver: local
-
-networks:
-  langfuse-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.25.0.0/16

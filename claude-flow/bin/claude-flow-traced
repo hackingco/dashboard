@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+
+// This file integrates Langfuse tracing with claude-flow
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Path to the Langfuse wrapper
+const wrapperPath = join(__dirname, '../../../claude-flow-analysis/cli-instrumentation/langfuse-wrapper.js');
+
+// Execute the wrapper with all arguments
+const child = spawn('node', [wrapperPath, ...process.argv.slice(2)], {
+  stdio: 'inherit',
+  env: process.env,
+});
+
+child.on('exit', (code) => {
+  process.exit(code || 0);
+});
+
+child.on('error', (err) => {
+  console.error('Failed to start wrapper:', err);
+  process.exit(1);
+});

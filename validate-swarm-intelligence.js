@@ -9,7 +9,7 @@ const axios = require('./testing-utils/node_modules/axios/dist/node/axios.cjs');
 
 class SwarmIntelligenceValidator {
   constructor() {
-    this.publicKey = 'pk-lf-104e1a3f-e976-41d9-aefc-99382633a15a';
+    this.publicKey = 'pk-lf-REDACTED';
     this.secretKey = 'sk-lf-5e3c1f3e-6898-44a6-b041-df18ab0e9b35';
     this.baseUrl = 'http://localhost:3000';
     this.auth = Buffer.from(`${this.publicKey}:${this.secretKey}`).toString('base64');

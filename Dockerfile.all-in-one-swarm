@@ -1,0 +1,448 @@
+FROM node:20-alpine
+
+# Install required packages
+RUN apk add --no-cache curl jq
+
+# Create working directory
+WORKDIR /swarm
+
+# Create the all-in-one swarm application
+RUN cat > /swarm/swarm-all-in-one.js << 'EOF'
+const http = require('http');
+const crypto = require('crypto');
+
+// Langfuse Configuration
+const LANGFUSE_PUBLIC_KEY = process.env.LANGFUSE_PUBLIC_KEY || 'pk-lf-9483a853-ab5b-4561-bfd5-ba0ce161908e';
+const LANGFUSE_SECRET_KEY = process.env.LANGFUSE_SECRET_KEY || 'sk-lf-28a0e091-3cf7-4973-a1e1-030705b714da';
+const LANGFUSE_HOST = process.env.LANGFUSE_HOST || 'langfuse-test-langfuse-1';
+const LANGFUSE_PORT = process.env.LANGFUSE_PORT || 3000;
+
+console.log('🐝 ALL-IN-ONE SWARM CONTAINER');
+console.log('=============================');
+console.log(`Langfuse: http://${LANGFUSE_HOST}:${LANGFUSE_PORT}`);
+console.log('Agents: 7 (all services in one container)');
+console.log('=============================\n');
+
+// Base class for all agents
+class SwarmAgent {
+  constructor(name, type, color) {
+    this.name = name;
+    this.type = type;
+    this.color = color;
+    this.auth = Buffer.from(`${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}`).toString('base64');
+  }
+
+  async sendTrace(traceData) {
+    const data = JSON.stringify(traceData);
+    
+    return new Promise((resolve) => {
+      const options = {
+        hostname: LANGFUSE_HOST,
+        port: LANGFUSE_PORT,
+        path: '/api/public/traces',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': data.length,
+          'Authorization': `Basic ${this.auth}`
+        }
+      };
+
+      const req = http.request(options, (res) => {
+        let responseData = '';
+        res.on('data', chunk => responseData += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200 || res.statusCode === 201) {
+            const response = JSON.parse(responseData);
+            console.log(`${this.color} [${this.name}] Trace sent: ${traceData.name}`);
+            resolve(response);
+          } else {
+            console.log(`${this.color} [${this.name}] Failed (${res.statusCode})`);
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', (e) => {
+        console.error(`${this.color} [${this.name}] Error:`, e.message);
+        resolve(null);
+      });
+
+      req.write(data);
+      req.end();
+    });
+  }
+
+  async sendSpan(spanData) {
+    const data = JSON.stringify(spanData);
+    
+    return new Promise((resolve) => {
+      const options = {
+        hostname: LANGFUSE_HOST,
+        port: LANGFUSE_PORT,
+        path: '/api/public/spans',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': data.length,
+          'Authorization': `Basic ${this.auth}`
+        }
+      };
+
+      const req = http.request(options, (res) => {
+        let responseData = '';
+        res.on('data', chunk => responseData += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200 || res.statusCode === 201) {
+            resolve(JSON.parse(responseData));
+          } else {
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', () => resolve(null));
+      req.write(data);
+      req.end();
+    });
+  }
+
+  generateSessionId() {
+    return `swarm-session-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  }
+}
+
+// SwarmCommander - Coordinator Agent
+class SwarmCommander extends SwarmAgent {
+  constructor() {
+    super('SwarmCommander', 'coordinator', '👑');
+  }
+
+  async coordinate() {
+    const sessionId = this.generateSessionId();
+    
+    const trace = await this.sendTrace({
+      name: 'Swarm Coordination Cycle',
+      userId: 'swarm-system',
+      sessionId: sessionId,
+      metadata: {
+        agent: this.name,
+        type: this.type,
+        agentsCoordinated: 6,
+        tasksDistributed: Math.floor(Math.random() * 10) + 5
+      },
+      tags: ['swarm', 'coordination', 'all-in-one']
+    });
+
+    if (trace) {
+      // Add coordination steps as spans
+      const steps = [
+        'Initialize swarm agents',
+        'Distribute workload',
+        'Monitor execution',
+        'Collect results'
+      ];
+
+      for (const step of steps) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        await this.sendSpan({
+          name: step,
+          traceId: trace.id,
+          userId: 'swarm-system',
+          startTime: new Date(Date.now() - 200).toISOString(),
+          endTime: new Date().toISOString()
+        });
+      }
+    }
+  }
+}
+
+// DataScout - Research Agent
+class DataScout extends SwarmAgent {
+  constructor() {
+    super('DataScout', 'researcher', '🔍');
+  }
+
+  async analyze() {
+    const operations = ['Pattern Analysis', 'Data Mining', 'Insight Extraction'];
+    const operation = operations[Math.floor(Math.random() * operations.length)];
+    
+    await this.sendTrace({
+      name: `${this.name}: ${operation}`,
+      userId: `agent-${this.name.toLowerCase()}`,
+      sessionId: this.generateSessionId(),
+      metadata: {
+        agent: this.name,
+        type: this.type,
+        operation: operation,
+        patternsFound: Math.floor(Math.random() * 10) + 5,
+        confidence: (Math.random() * 0.3 + 0.7).toFixed(2)
+      },
+      tags: ['swarm', 'analysis', 'research']
+    });
+  }
+}
+
+// LiveTraceBuilder - Coder Agent
+class LiveTraceBuilder extends SwarmAgent {
+  constructor() {
+    super('LiveTraceBuilder', 'coder', '🛠️');
+  }
+
+  async buildTraces() {
+    const operations = [
+      'API Request Processing',
+      'Database Query Execution',
+      'Cache Operation',
+      'Message Queue Processing',
+      'WebSocket Communication'
+    ];
+    
+    const operation = operations[Math.floor(Math.random() * operations.length)];
+    const duration = Math.floor(Math.random() * 2000) + 500;
+    
+    await this.sendTrace({
+      name: operation,
+      userId: `user-${Math.floor(Math.random() * 100)}`,
+      sessionId: this.generateSessionId(),
+      metadata: {
+        agent: this.name,
+        type: this.type,
+        duration: duration,
+        status: Math.random() > 0.1 ? 'success' : 'error',
+        throughput: Math.floor(Math.random() * 1000) + 100
+      },
+      tags: ['swarm', 'api', 'processing']
+    });
+  }
+}
+
+// PerformanceAnalyst - Analyst Agent
+class PerformanceAnalyst extends SwarmAgent {
+  constructor() {
+    super('PerformanceAnalyst', 'analyst', '📊');
+  }
+
+  async analyzePerformance() {
+    const sessionId = this.generateSessionId();
+    
+    const trace = await this.sendTrace({
+      name: 'Performance Analysis Report',
+      userId: 'swarm-analytics',
+      sessionId: sessionId,
+      metadata: {
+        agent: this.name,
+        type: this.type,
+        avgLatency: (Math.random() * 100 + 50).toFixed(2) + 'ms',
+        throughput: Math.floor(Math.random() * 1000) + 500 + ' req/s',
+        cpuUsage: (Math.random() * 60 + 20).toFixed(1) + '%',
+        memoryUsage: (Math.random() * 40 + 30).toFixed(1) + '%'
+      },
+      tags: ['swarm', 'performance', 'metrics']
+    });
+
+    if (trace) {
+      // Add performance analysis steps
+      const metrics = ['Latency Analysis', 'Throughput Measurement', 'Resource Utilization'];
+      for (const metric of metrics) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await this.sendSpan({
+          name: metric,
+          traceId: trace.id,
+          userId: 'swarm-analytics',
+          metadata: {
+            value: Math.random() * 100
+          }
+        });
+      }
+    }
+  }
+}
+
+// QualityAssurance - Tester Agent
+class QualityAssurance extends SwarmAgent {
+  constructor() {
+    super('QualityAssurance', 'tester', '✅');
+  }
+
+  async runTests() {
+    const testSuites = ['Integration Tests', 'API Tests', 'Performance Tests', 'Security Tests'];
+    const suite = testSuites[Math.floor(Math.random() * testSuites.length)];
+    const testCount = Math.floor(Math.random() * 20) + 10;
+    const passed = testCount - Math.floor(Math.random() * 3);
+    
+    await this.sendTrace({
+      name: suite,
+      userId: 'swarm-qa',
+      sessionId: this.generateSessionId(),
+      metadata: {
+        agent: this.name,
+        type: this.type,
+        totalTests: testCount,
+        passed: passed,
+        failed: testCount - passed,
+        successRate: ((passed / testCount) * 100).toFixed(1) + '%'
+      },
+      tags: ['swarm', 'testing', 'qa']
+    });
+  }
+}
+
+// IntelligenceGatherer - Research Agent
+class IntelligenceGatherer extends SwarmAgent {
+  constructor() {
+    super('IntelligenceGatherer', 'researcher', '🧠');
+  }
+
+  async gatherIntelligence() {
+    await this.sendTrace({
+      name: 'Intelligence Report Generation',
+      userId: 'swarm-intelligence',
+      sessionId: this.generateSessionId(),
+      metadata: {
+        agent: this.name,
+        type: this.type,
+        dataPoints: Math.floor(Math.random() * 1000) + 500,
+        insights: Math.floor(Math.random() * 10) + 5,
+        accuracy: (Math.random() * 0.2 + 0.8).toFixed(2)
+      },
+      tags: ['swarm', 'intelligence', 'ai']
+    });
+  }
+}
+
+// SystemIntegrator - Coder Agent
+class SystemIntegrator extends SwarmAgent {
+  constructor() {
+    super('SystemIntegrator', 'coder', '🔗');
+  }
+
+  async integrate() {
+    const integrations = ['Database Connection', 'API Integration', 'Service Mesh Setup', 'Event Bus Configuration'];
+    const integration = integrations[Math.floor(Math.random() * integrations.length)];
+    
+    await this.sendTrace({
+      name: `System Integration: ${integration}`,
+      userId: 'swarm-integrator',
+      sessionId: this.generateSessionId(),
+      metadata: {
+        agent: this.name,
+        type: this.type,
+        integration: integration,
+        componentsConnected: Math.floor(Math.random() * 5) + 2,
+        latency: Math.floor(Math.random() * 50) + 10 + 'ms'
+      },
+      tags: ['swarm', 'integration', 'system']
+    });
+  }
+}
+
+// Main Swarm Orchestrator
+class SwarmOrchestrator {
+  constructor() {
+    this.agents = [
+      new SwarmCommander(),
+      new DataScout(),
+      new LiveTraceBuilder(),
+      new PerformanceAnalyst(),
+      new QualityAssurance(),
+      new IntelligenceGatherer(),
+      new SystemIntegrator()
+    ];
+    
+    this.activities = 0;
+  }
+
+  async runActivity() {
+    // Select random agent
+    const agent = this.agents[Math.floor(Math.random() * this.agents.length)];
+    
+    // Execute agent activity
+    switch(agent.name) {
+      case 'SwarmCommander':
+        await agent.coordinate();
+        break;
+      case 'DataScout':
+        await agent.analyze();
+        break;
+      case 'LiveTraceBuilder':
+        await agent.buildTraces();
+        break;
+      case 'PerformanceAnalyst':
+        await agent.analyzePerformance();
+        break;
+      case 'QualityAssurance':
+        await agent.runTests();
+        break;
+      case 'IntelligenceGatherer':
+        await agent.gatherIntelligence();
+        break;
+      case 'SystemIntegrator':
+        await agent.integrate();
+        break;
+    }
+    
+    this.activities++;
+  }
+
+  async start() {
+    console.log('🚀 Starting All-in-One Swarm...\n');
+    
+    // Health check server
+    http.createServer((req, res) => {
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({
+        status: 'healthy',
+        agents: this.agents.length,
+        activities: this.activities,
+        uptime: process.uptime()
+      }));
+    }).listen(8888);
+    
+    console.log('📡 Health check available at :8888/health\n');
+    
+    // Initial burst of activity
+    console.log('🎯 Generating initial activity burst...');
+    for (let i = 0; i < 5; i++) {
+      await this.runActivity();
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    // Continuous activity
+    console.log('\n⚡ Continuous trace generation active');
+    console.log('📊 New traces every 3-8 seconds\n');
+    
+    setInterval(async () => {
+      await this.runActivity();
+    }, Math.random() * 5000 + 3000);
+  }
+
+  showStatus() {
+    setInterval(() => {
+      console.log(`\n📊 Status: ${this.activities} activities completed`);
+      console.log('🐝 All agents operational');
+    }, 30000);
+  }
+}
+
+// Start the orchestrator
+const orchestrator = new SwarmOrchestrator();
+orchestrator.start();
+orchestrator.showStatus();
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('\n👋 Shutting down All-in-One Swarm...');
+  process.exit(0);
+});
+EOF
+
+# Expose health check port
+EXPOSE 8888
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
+  CMD wget -q -O - http://localhost:8888 || exit 1
+
+# Run the all-in-one swarm
+CMD ["node", "/swarm/swarm-all-in-one.js"]

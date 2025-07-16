@@ -59,11 +59,11 @@ interface SwarmHealthMetrics {
 }
 
 interface SystemStatus {
-  langfuse: { connected: boolean; lastSync: Date | null; tracesCount: number };
-  trustGraph: { connected: boolean; nodesCount: number; edgesCount: number };
+  langfuse: { connected: boolean; lastSync: Date | null; tracesCount: number; apiUrl: string };
   webSocket: { connected: boolean; lastHeartbeat: Date | null };
   database: { connected: boolean; latency: number };
   cache: { connected: boolean; hitRate: number };
+  realTimeUpdates: { active: boolean; updateInterval: number; lastUpdate: Date | null };
 }
 
 interface AlertNotification {
@@ -146,12 +146,8 @@ export function EnhancedSwarmDashboard({
       langfuse: {
         connected: Math.random() > 0.1,
         lastSync: new Date(Date.now() - Math.random() * 300000),
-        tracesCount: Math.floor(Math.random() * 1000) + 100
-      },
-      trustGraph: {
-        connected: Math.random() > 0.15,
-        nodesCount: Math.floor(Math.random() * 50) + 10,
-        edgesCount: Math.floor(Math.random() * 100) + 20
+        tracesCount: Math.floor(Math.random() * 1000) + 100,
+        apiUrl: 'http://localhost:3000'
       },
       webSocket: {
         connected: Math.random() > 0.05,
@@ -164,6 +160,11 @@ export function EnhancedSwarmDashboard({
       cache: {
         connected: Math.random() > 0.08,
         hitRate: Math.random() * 0.3 + 0.7 // 70-100%
+      },
+      realTimeUpdates: {
+        active: Math.random() > 0.1,
+        updateInterval: refreshInterval,
+        lastUpdate: new Date(Date.now() - Math.random() * 10000)
       }
     };
   };
@@ -467,21 +468,14 @@ export function EnhancedSwarmDashboard({
                 <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded">
                   <div className="flex items-center space-x-2">
                     {getStatusIcon(systemStatus.langfuse.connected)}
-                    <span className="font-medium">Langfuse</span>
+                    <span className="font-medium">Langfuse API</span>
                   </div>
-                  <Badge variant={systemStatus.langfuse.connected ? 'default' : 'destructive'}>
-                    {systemStatus.langfuse.tracesCount} traces
-                  </Badge>
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded">
-                  <div className="flex items-center space-x-2">
-                    {getStatusIcon(systemStatus.trustGraph.connected)}
-                    <span className="font-medium">TrustGraph</span>
+                  <div className="flex flex-col items-end">
+                    <Badge variant={systemStatus.langfuse.connected ? 'default' : 'destructive'}>
+                      {systemStatus.langfuse.tracesCount} traces
+                    </Badge>
+                    <span className="text-xs text-gray-500 mt-1">:3000</span>
                   </div>
-                  <Badge variant={systemStatus.trustGraph.connected ? 'default' : 'destructive'}>
-                    {systemStatus.trustGraph.nodesCount} nodes
-                  </Badge>
                 </div>
                 
                 <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded">
@@ -491,6 +485,16 @@ export function EnhancedSwarmDashboard({
                   </div>
                   <Badge variant={systemStatus.webSocket.connected ? 'default' : 'destructive'}>
                     Live
+                  </Badge>
+                </div>
+                
+                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded">
+                  <div className="flex items-center space-x-2">
+                    {getStatusIcon(systemStatus.realTimeUpdates.active)}
+                    <span className="font-medium">Real-time</span>
+                  </div>
+                  <Badge variant={systemStatus.realTimeUpdates.active ? 'default' : 'destructive'}>
+                    {systemStatus.realTimeUpdates.updateInterval}ms
                   </Badge>
                 </div>
                 

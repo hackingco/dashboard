@@ -1,0 +1,285 @@
+{
+  "capacity_planning": {
+    "version": "1.0.0",
+    "last_updated": "2024-01-13T00:00:00Z",
+    "review_cycle": "weekly",
+    
+    "resource_limits": {
+      "agents": {
+        "min": 2,
+        "max": 50,
+        "optimal_range": [5, 15],
+        "cost_per_agent_hour": 0.25
+      },
+      "memory": {
+        "per_agent_mb": 512,
+        "system_overhead_mb": 2048,
+        "max_total_gb": 64
+      },
+      "cpu": {
+        "per_agent_cores": 0.5,
+        "system_overhead_cores": 2,
+        "max_total_cores": 32
+      },
+      "storage": {
+        "trace_size_kb": 5,
+        "retention_days": 30,
+        "max_storage_gb": 1000
+      },
+      "network": {
+        "bandwidth_per_agent_mbps": 1,
+        "max_bandwidth_gbps": 10
+      }
+    },
+    
+    "scaling_policies": {
+      "auto_scaling": {
+        "enabled": true,
+        "check_interval": "1m",
+        "cooldown_period": "5m",
+        "policies": [
+          {
+            "name": "scale_on_queue_depth",
+            "metric": "traces.queue_depth",
+            "threshold": 100,
+            "comparison": "greater_than",
+            "duration": "3m",
+            "action": {
+              "type": "scale_out",
+              "agents": 2,
+              "max_scale_step": 5
+            }
+          },
+          {
+            "name": "scale_on_response_time",
+            "metric": "performance.p95",
+            "threshold": 2000,
+            "comparison": "greater_than",
+            "duration": "5m",
+            "action": {
+              "type": "scale_out",
+              "agents": "10%",
+              "min_agents": 1,
+              "max_agents": 5
+            }
+          },
+          {
+            "name": "scale_on_cpu_pressure",
+            "metric": "agents.avg_cpu_usage",
+            "threshold": 80,
+            "comparison": "greater_than",
+            "duration": "10m",
+            "action": {
+              "type": "scale_out",
+              "agents": 3,
+              "priority": "high"
+            }
+          },
+          {
+            "name": "scale_down_on_idle",
+            "metric": "agents.idle_percentage",
+            "threshold": 70,
+            "comparison": "greater_than",
+            "duration": "30m",
+            "action": {
+              "type": "scale_in",
+              "agents": 1,
+              "min_agents": 2,
+              "grace_period": "5m"
+            }
+          }
+        ]
+      },
+      
+      "predictive_scaling": {
+        "enabled": true,
+        "model": "arima",
+        "forecast_window": "1h",
+        "confidence_level": 0.95,
+        "metrics": [
+          "traces.throughput",
+          "agents.utilization",
+          "cost.per_hour"
+        ],
+        "preemptive_scale_threshold": 0.8
+      },
+      
+      "scheduled_scaling": {
+        "enabled": true,
+        "timezone": "UTC",
+        "schedules": [
+          {
+            "name": "business_hours_scale_up",
+            "cron": "0 8 * * MON-FRI",
+            "target_agents": 10,
+            "duration": "9h"
+          },
+          {
+            "name": "weekend_scale_down",
+            "cron": "0 18 * * FRI",
+            "target_agents": 3,
+            "duration": "60h"
+          },
+          {
+            "name": "monthly_peak",
+            "cron": "0 0 1 * *",
+            "target_agents": 20,
+            "duration": "24h"
+          }
+        ]
+      }
+    },
+    
+    "capacity_metrics": {
+      "current_utilization": {
+        "agents": {
+          "total": 8,
+          "active": 6,
+          "idle": 2,
+          "utilization_percent": 75
+        },
+        "resources": {
+          "cpu_cores_used": 4.2,
+          "memory_gb_used": 12.5,
+          "storage_gb_used": 145.3,
+          "network_mbps_used": 45.6
+        }
+      },
+      
+      "growth_projections": {
+        "trace_growth_rate": {
+          "daily": 0.05,
+          "weekly": 0.12,
+          "monthly": 0.35
+        },
+        "resource_growth_rate": {
+          "cpu": 0.03,
+          "memory": 0.04,
+          "storage": 0.08
+        },
+        "cost_projections": {
+          "next_24h": 125.50,
+          "next_7d": 850.00,
+          "next_30d": 3200.00
+        }
+      },
+      
+      "capacity_runway": {
+        "cpu_days": 45,
+        "memory_days": 38,
+        "storage_days": 92,
+        "budget_days": 67,
+        "limiting_factor": "memory"
+      }
+    },
+    
+    "optimization_recommendations": [
+      {
+        "id": "opt_001",
+        "type": "resource_optimization",
+        "priority": "high",
+        "title": "Implement trace sampling",
+        "description": "Reduce storage costs by 40% through intelligent trace sampling",
+        "estimated_savings": "$480/month",
+        "implementation_effort": "medium",
+        "risk": "low"
+      },
+      {
+        "id": "opt_002",
+        "type": "performance_optimization",
+        "priority": "medium",
+        "title": "Enable request batching",
+        "description": "Reduce API calls by 60% through request batching",
+        "estimated_impact": "30% latency reduction",
+        "implementation_effort": "low",
+        "risk": "low"
+      },
+      {
+        "id": "opt_003",
+        "type": "cost_optimization",
+        "priority": "high",
+        "title": "Implement tiered storage",
+        "description": "Move old traces to cold storage after 7 days",
+        "estimated_savings": "$320/month",
+        "implementation_effort": "high",
+        "risk": "medium"
+      }
+    ],
+    
+    "load_testing_scenarios": {
+      "scenarios": [
+        {
+          "name": "normal_load",
+          "traces_per_minute": 100,
+          "duration": "1h",
+          "agent_distribution": "balanced",
+          "expected_metrics": {
+            "p95_latency": 800,
+            "error_rate": 0.5,
+            "cost_per_hour": 5.0
+          }
+        },
+        {
+          "name": "peak_load",
+          "traces_per_minute": 500,
+          "duration": "30m",
+          "agent_distribution": "weighted",
+          "expected_metrics": {
+            "p95_latency": 1500,
+            "error_rate": 2.0,
+            "cost_per_hour": 25.0
+          }
+        },
+        {
+          "name": "stress_test",
+          "traces_per_minute": 1000,
+          "duration": "15m",
+          "agent_distribution": "random",
+          "expected_metrics": {
+            "p95_latency": 3000,
+            "error_rate": 5.0,
+            "cost_per_hour": 50.0
+          }
+        }
+      ]
+    },
+    
+    "capacity_alerts": {
+      "thresholds": {
+        "resource_exhaustion_warning": 0.8,
+        "resource_exhaustion_critical": 0.9,
+        "runway_warning_days": 30,
+        "runway_critical_days": 7
+      },
+      "notifications": {
+        "warning": ["email", "slack"],
+        "critical": ["pagerduty", "email", "slack"]
+      }
+    },
+    
+    "disaster_recovery": {
+      "backup_strategy": {
+        "frequency": "hourly",
+        "retention": "7d",
+        "location": "s3://backup-bucket/swarm-traces"
+      },
+      "failover_regions": [
+        {
+          "region": "us-west-2",
+          "priority": 1,
+          "capacity": "100%"
+        },
+        {
+          "region": "eu-west-1",
+          "priority": 2,
+          "capacity": "50%"
+        }
+      ],
+      "recovery_objectives": {
+        "rto_minutes": 15,
+        "rpo_minutes": 5,
+        "data_loss_tolerance": "minimal"
+      }
+    }
+  }
+}

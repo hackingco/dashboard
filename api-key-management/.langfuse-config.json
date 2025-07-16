@@ -1,0 +1,6 @@
+{
+  "enableHealthMonitoring": false,
+  "keyRotationInterval": 0,
+  "skipUIExtraction": true,
+  "offlineMode": true
+}

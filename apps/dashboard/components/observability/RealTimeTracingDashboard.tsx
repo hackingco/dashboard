@@ -175,58 +175,33 @@ export function RealTimeTracingDashboard({
     };
   }, [swarmId]);
 
-  // WebSocket connection simulation
+  // Connection status management
   const connectWebSocket = useCallback(() => {
-    if (!enableAutoRefresh || isPaused) return;
-
-    setIsConnected(true);
+    // The useLangfuseRealtime hook handles the actual connection and data fetching
+    // This function is kept for compatibility but doesn't need to do mock simulation
     
-    // Simulate WebSocket with interval
+    if (!enableAutoRefresh || isPaused) {
+      return () => {}; // Return empty cleanup function
+    }
+
+    // Update last activity timestamp
     const interval = setInterval(() => {
-      if (Math.random() > 0.3) { // 70% chance of new trace
-        const newTrace = generateMockTrace();
-        setTraces(prev => {
-          const updated = [newTrace, ...prev].slice(0, maxTraces);
-          return updated;
-        });
-      }
-      
-      if (Math.random() > 0.8) { // 20% chance of agent update
-        setAgents(prev => {
-          const updated = [...prev];
-          if (updated.length < 8) {
-            updated.push(generateMockAgent());
-          } else {
-            const index = Math.floor(Math.random() * updated.length);
-            updated[index] = { ...updated[index], lastActivity: new Date() };
-          }
-          return updated;
-        });
-      }
-      
       lastUpdateRef.current = new Date();
     }, refreshInterval);
 
     return () => {
       clearInterval(interval);
-      setIsConnected(false);
     };
-  }, [enableAutoRefresh, isPaused, refreshInterval, maxTraces, generateMockTrace, generateMockAgent]);
+  }, [enableAutoRefresh, isPaused, refreshInterval]);
 
   // Initialize connection and data
   useEffect(() => {
-    // Generate initial data
-    const initialTraces = Array.from({ length: 20 }, () => generateMockTrace());
-    const initialAgents = Array.from({ length: 6 }, () => generateMockAgent());
-    
-    setTraces(initialTraces);
-    setAgents(initialAgents);
-    
-    // Connect WebSocket
+    // The useLangfuseRealtime hook handles data fetching and initialization
+    // Connect WebSocket if needed
     const cleanup = connectWebSocket();
     
     return cleanup;
-  }, [connectWebSocket, generateMockTrace, generateMockAgent]);
+  }, [connectWebSocket]);
 
   // Update metrics and chart data
   useEffect(() => {
@@ -247,7 +222,8 @@ export function RealTimeTracingDashboard({
     const errorTraces = recentTraces.filter(t => t.status === 'error');
     const completedTraces = recentTraces.filter(t => t.status === 'success' || t.status === 'error');
     
-    const metrics: SwarmMetrics = {
+    // Calculate local metrics for display (use swarmMetrics from hook as primary source)
+    const localMetrics = {
       totalAgents: agents.length,
       activeAgents: activeAgents.length,
       totalTasks: recentTraces.length,
@@ -268,7 +244,8 @@ export function RealTimeTracingDashboard({
       },
     };
     
-    setSwarmMetrics(metrics);
+    // Use swarmMetrics from hook, fallback to localMetrics if needed
+    const displayMetrics = swarmMetrics || localMetrics;
     
     // Update chart data
     const last10Minutes = Array.from({ length: 10 }, (_, i) => {

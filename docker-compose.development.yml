@@ -1,260 +1,161 @@
 version: '3.8'
 
-# Development Docker Compose Override
-# Use with: docker-compose -f docker-compose.production.yml -f docker-compose.development.yml up
-
 services:
-  # Development overrides for PostgreSQL
-  postgres:
-    environment:
-      - POSTGRES_USER=langfuse_dev
-      - POSTGRES_PASSWORD=dev_password
-      - POSTGRES_DB=langfuse_dev
-    ports:
-      - "5433:5432"  # Different port to avoid conflicts
-    volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
-      - ./config/postgres/init-langfuse.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-      # Skip production tuning in development
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-
-  # Development overrides for Langfuse
-  langfuse-server:
-    environment:
-      - DATABASE_URL=postgresql://langfuse_dev:dev_password@postgres:5432/langfuse_dev
-      - NEXTAUTH_URL=http://localhost:3050
-      - NEXTAUTH_SECRET=dev_nextauth_secret_change_in_production
-      - SALT=dev_salt_change_in_production
-      - ENCRYPTION_KEY=dev_encryption_key_change_in_production
-      - NODE_ENV=development
-      - LANGFUSE_DEFAULT_PROJECT_ID=dev_project
-      - LANGFUSE_DEFAULT_PROJECT_SECRET=dev_project_secret
-      - LANGFUSE_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3050
-    ports:
-      - "3050:3000"
-    volumes:
-      - langfuse_dev_data:/app/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-
-  # Development overrides for Redis
+  # Redis for development
   redis:
-    command: >
-      redis-server
-      --requirepass dev_redis_password
-      --appendonly yes
-      --save 60 1
-      --loglevel debug
-    environment:
-      - REDIS_PASSWORD=dev_redis_password
+    image: redis:7-alpine
     ports:
-      - "6380:6379"  # Different port to avoid conflicts
+      - "6379:6379"
     volumes:
-      - redis_dev_data:/data
-      - ./config/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
-
-  # Development overrides for Swarm Manager
-  swarm-manager:
-    environment:
-      - NODE_ENV=development
-      - LANGFUSE_PUBLIC_KEY=pk-lf-dev-key-1234567890abcdef
-      - LANGFUSE_SECRET_KEY=sk-lf-dev-key-fedcba0987654321
-      - LANGFUSE_HOST=http://langfuse-server:3000
-      - SWARM_ID=dev-swarm-001
-      - REDIS_URL=redis://:dev_redis_password@redis:6379
-      - LANGFUSE_LOG_LEVEL=debug
-      - JWT_SECRET=dev_jwt_secret_change_in_production
-      - MANAGER_API_KEY=dev_manager_api_key
-      - MAX_WORKERS=2  # Fewer workers in development
-      - WORKER_TIMEOUT=60  # Shorter timeout for faster feedback
-    ports:
-      - "8001:8001"
-      - "9001:9001"
-    volumes:
-      - swarm_dev_data:/app/data
-      - swarm_dev_logs:/app/logs
-      - ./shared/langfuse-wrapper:/app/langfuse-wrapper:rw  # Read-write for development
-      - ./apps/manager/src:/app/apps/manager/src:rw  # Live reload
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-
-  # Development overrides for Workers
-  swarm-worker-1:
-    environment:
-      - NODE_ENV=development
-      - LANGFUSE_PUBLIC_KEY=pk-lf-dev-key-1234567890abcdef
-      - LANGFUSE_SECRET_KEY=sk-lf-dev-key-fedcba0987654321
-      - LANGFUSE_HOST=http://langfuse-server:3000
-      - SWARM_ID=dev-swarm-001
-      - REDIS_URL=redis://:dev_redis_password@redis:6379
-      - LANGFUSE_LOG_LEVEL=debug
-      - WORKER_SPECIALIZATION=general
-      - WORKER_CAPACITY=5  # Lower capacity for development
-    ports:
-      - "8002:8002"
-    volumes:
-      - swarm_dev_data:/app/data
-      - swarm_dev_logs:/app/logs
-      - ./shared/langfuse-wrapper:/app/langfuse-wrapper:rw
-      - ./apps/worker/src:/app/apps/worker/src:rw  # Live reload
-    deploy:
-      resources:
-        limits:
-          cpus: '0.3'
-          memory: 256M
-
-  swarm-worker-2:
-    environment:
-      - NODE_ENV=development
-      - LANGFUSE_PUBLIC_KEY=pk-lf-dev-key-1234567890abcdef
-      - LANGFUSE_SECRET_KEY=sk-lf-dev-key-fedcba0987654321
-      - LANGFUSE_HOST=http://langfuse-server:3000
-      - SWARM_ID=dev-swarm-001
-      - REDIS_URL=redis://:dev_redis_password@redis:6379
-      - LANGFUSE_LOG_LEVEL=debug
-      - WORKER_SPECIALIZATION=testing
-      - WORKER_CAPACITY=3
-    ports:
-      - "8003:8003"
-    volumes:
-      - swarm_dev_data:/app/data
-      - swarm_dev_logs:/app/logs
-      - ./shared/langfuse-wrapper:/app/langfuse-wrapper:rw
-      - ./apps/worker/src:/app/apps/worker/src:rw
-    deploy:
-      resources:
-        limits:
-          cpus: '0.3'
-          memory: 256M
-
-  # Remove worker-3 in development (not needed)
-  swarm-worker-3:
-    deploy:
-      replicas: 0  # Don't start this service in development
-
-  # Development overrides for Load Balancer
-  load-balancer:
-    ports:
-      - "8080:80"  # Different port to avoid conflicts
-      - "8404:8404"
-    volumes:
-      - ./config/haproxy/haproxy-dev.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-
-  # Development database viewer (optional)
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    restart: unless-stopped
-    environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@example.com
-      - PGADMIN_DEFAULT_PASSWORD=dev_pgadmin_password
-      - PGADMIN_CONFIG_SERVER_MODE=False
-    ports:
-      - "5050:80"
-    volumes:
-      - pgadmin_dev_data:/var/lib/pgadmin
+      - redis-dev-data:/data
+    command: redis-server --appendonly yes
     networks:
       - swarm-network
-    profiles:
-      - development
-      - debugging
-    depends_on:
-      - postgres
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
 
-  # Redis Commander (Redis GUI)
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    restart: unless-stopped
-    environment:
-      - REDIS_HOSTS=local:redis:6379:0:dev_redis_password
-      - HTTP_USER=admin
-      - HTTP_PASSWORD=dev_redis_gui_password
-    ports:
-      - "8081:8081"
-    networks:
-      - swarm-network
-    profiles:
-      - development
-      - debugging
-    depends_on:
-      - redis
-
-  # Development log aggregator (simpler than full ELK)
-  dozzle:
-    image: amir20/dozzle:latest
-    restart: unless-stopped
-    ports:
-      - "9999:8080"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      - DOZZLE_LEVEL=debug
-      - DOZZLE_TAILSIZE=300
-    networks:
-      - swarm-network
-    profiles:
-      - development
-      - debugging
-
-  # Test runner for development
-  test-runner:
+  # Manager API Service - Development with hot reload
+  manager:
     build:
-      context: .
-      dockerfile: Dockerfile.swarm
-      target: test-runner
+      context: ./apps/manager
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+      - "9229:9229"  # Node.js debugging
     environment:
-      - NODE_ENV=test
-      - LANGFUSE_PUBLIC_KEY=pk-lf-dev-key-1234567890abcdef
-      - LANGFUSE_SECRET_KEY=sk-lf-dev-key-fedcba0987654321
-      - LANGFUSE_HOST=http://langfuse-server:3000
-      - SWARM_ID=dev-test-swarm
-      - REDIS_URL=redis://:dev_redis_password@redis:6379
-      - LANGFUSE_LOG_LEVEL=debug
+      - NODE_ENV=development
+      - PORT=8080
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/swarm_dev}
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-in-production}
+      - FLY_API_TOKEN=${FLY_API_TOKEN}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+      - DASHBOARD_URL=http://dashboard:3000
+      - NEXT_PUBLIC_DASHBOARD_URL=http://localhost:3000
+      - DEBUG=swarm:*
     volumes:
-      - swarm_dev_data:/app/data
-      - ./shared/langfuse-wrapper:/app/langfuse-wrapper:rw
-      - ./tests:/app/tests:rw
-      - test_results:/app/test-results
+      - ./apps/manager:/app
+      - ./shared:/shared
+      - /app/node_modules
+    networks:
+      - swarm-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: npm run dev
+
+  # Next.js Dashboard - Development with hot reload
+  dashboard:
+    build:
+      context: ./apps/dashboard
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8080
+      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./apps/dashboard:/app
+      - ./shared:/shared
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - swarm-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: npm run dev
+
+  # PostgreSQL for local development
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=swarm_dev
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Development tools container
+  devtools:
+    image: node:18-alpine
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - /workspace/node_modules
+    networks:
+      - swarm-network
+    command: tail -f /dev/null
+    profiles:
+      - tools
+
+  # Langfuse local instance for development (optional)
+  langfuse-db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=langfuse
+      - POSTGRES_PASSWORD=langfuse
+      - POSTGRES_DB=langfuse
+    volumes:
+      - langfuse-db-data:/var/lib/postgresql/data
     networks:
       - swarm-network
     profiles:
-      - testing
-    depends_on:
-      - langfuse-server
-      - swarm-manager
-    command: |
-      sh -c '
-        echo "Waiting for services to be ready..."
-        sleep 30
-        echo "Running development tests..."
-        npm run test:unit
-        echo "Tests completed. Keeping container alive for debugging..."
-        tail -f /dev/null
-      '
+      - langfuse-local
 
-# Development-specific volumes
+  langfuse:
+    image: langfuse/langfuse:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - DATABASE_URL=postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      - NEXTAUTH_SECRET=your-secret-here
+      - NEXTAUTH_URL=http://localhost:3001
+      - SALT=your-salt-here
+    depends_on:
+      - langfuse-db
+    networks:
+      - swarm-network
+    profiles:
+      - langfuse-local
+
+networks:
+  swarm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
 volumes:
-  postgres_dev_data:
+  redis-dev-data:
     driver: local
-  langfuse_dev_data:
+  postgres-dev-data:
     driver: local
-  redis_dev_data:
-    driver: local
-  swarm_dev_data:
-    driver: local
-  swarm_dev_logs:
-    driver: local
-  pgadmin_dev_data:
-    driver: local
-  test_results:
+  langfuse-db-data:
     driver: local

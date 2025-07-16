@@ -1,0 +1,39 @@
+{
+  "swarm": {
+    "name": "hive-mind-demo",
+    "maxAgents": 8,
+    "topology": "hierarchical",
+    "strategy": "adaptive",
+    "queen": {
+      "type": "strategic",
+      "coordination": true,
+      "consensus": "majority"
+    }
+  },
+  "agents": {
+    "researcher": 2,
+    "coder": 2,
+    "analyst": 1,
+    "tester": 1,
+    "optimizer": 1,
+    "coordinator": 1
+  },
+  "memory": {
+    "persistent": true,
+    "namespace": "hive-mind-demo",
+    "ttl": 86400
+  },
+  "tracing": {
+    "enabled": true,
+    "provider": "langfuse",
+    "session_tracking": true,
+    "performance_metrics": true
+  },
+  "features": {
+    "collective_intelligence": true,
+    "consensus_voting": true,
+    "auto_scaling": true,
+    "work_stealing": true,
+    "neural_learning": true
+  }
+}

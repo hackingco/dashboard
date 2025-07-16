@@ -1,0 +1,61 @@
+{
+  "passed": 10,
+  "failed": 0,
+  "warnings": 3,
+  "tests": [
+    {
+      "name": "File Structure",
+      "passed": true,
+      "warnings": []
+    },
+    {
+      "name": "Dependencies",
+      "passed": true,
+      "warnings": []
+    },
+    {
+      "name": "Module Imports",
+      "passed": true,
+      "warnings": []
+    },
+    {
+      "name": "Configuration",
+      "passed": true,
+      "warnings": [
+        "Environment variable LANGFUSE_HOST not set",
+        "Environment variable LANGFUSE_PUBLIC_KEY not set",
+        "Environment variable LANGFUSE_SECRET_KEY not set"
+      ]
+    },
+    {
+      "name": "Key Manager",
+      "passed": true,
+      "warnings": []
+    },
+    {
+      "name": "Validator",
+      "passed": true,
+      "warnings": []
+    },
+    {
+      "name": "Tester",
+      "passed": true,
+      "warnings": []
+    },
+    {
+      "name": "Integration",
+      "passed": true,
+      "warnings": []
+    },
+    {
+      "name": "CLI Interface",
+      "passed": true,
+      "warnings": []
+    },
+    {
+      "name": "Documentation",
+      "passed": true,
+      "warnings": []
+    }
+  ]
+}

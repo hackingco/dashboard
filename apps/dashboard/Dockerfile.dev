@@ -1,0 +1,39 @@
+FROM node:18-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    libc6-compat \
+    git \
+    curl \
+    bash
+
+WORKDIR /app
+
+# Copy workspace files
+COPY ../../package.json ../../pnpm-lock.yaml ../../pnpm-workspace.yaml ./
+COPY package.json ./apps/dashboard/
+COPY ../../shared ./shared/
+
+# Enable pnpm and install dependencies
+RUN corepack enable pnpm
+RUN pnpm install --ignore-scripts || pnpm install --no-frozen-lockfile --ignore-scripts
+
+# Copy dashboard source code
+COPY . ./apps/dashboard/
+
+# Set working directory to dashboard
+WORKDIR /app/apps/dashboard
+
+# Expose port and set environment
+EXPOSE 3000
+ENV NODE_ENV=development
+ENV PORT=3000
+ENV WATCHPACK_POLLING=true
+ENV CHOKIDAR_USEPOLLING=true
+
+# Health check for development
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:3000 || exit 1
+
+# Start development server
+CMD ["pnpm", "dev"]

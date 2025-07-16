@@ -29,7 +29,7 @@ import {
   Download,
   Upload,
   Connect,
-  Disconnect,
+  WifiOff,
   Bell
 } from 'lucide-react';
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ScatterChart, Scatter } from 'recharts';
@@ -554,7 +554,7 @@ export function EnhancedLangfuseIntegration({
                 {connection.status === 'connecting' && <RefreshCw className="w-3 h-3 mr-1 animate-spin inline" />}
                 {connection.status === 'connected' && <CheckCircle2 className="w-3 h-3 mr-1 inline" />}
                 {connection.status === 'error' && <XCircle className="w-3 h-3 mr-1 inline" />}
-                {connection.status === 'disconnected' && <Disconnect className="w-3 h-3 mr-1 inline" />}
+                {connection.status === 'disconnected' && <WifiOff className="w-3 h-3 mr-1 inline" />}
                 {connection.status}
               </div>
             </CardTitle>

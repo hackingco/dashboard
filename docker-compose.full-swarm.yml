@@ -1,0 +1,418 @@
+version: '3.8'
+
+services:
+  # Swarm Coordinator - Main orchestrator
+  swarm-coordinator:
+    image: node:20-alpine
+    container_name: swarm-coordinator
+    environment:
+      - NODE_ENV=production
+      - LANGFUSE_HOST=http://langfuse-test-langfuse-1:3000
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - SWARM_ID=swarm_1752454839280_pw37vfa2h
+    command: |
+      sh -c '
+        npm install langfuse
+        cat > /app.js << "EOF"
+        const Langfuse = require("langfuse").Langfuse;
+        const http = require("http");
+        
+        console.log("🐝 SWARM COORDINATOR STARTING");
+        console.log("Langfuse Host:", process.env.LANGFUSE_HOST);
+        
+        // Initialize Langfuse client
+        const langfuse = new Langfuse({
+          publicKey: process.env.LANGFUSE_PUBLIC_KEY || "pk-lf-test",
+          secretKey: process.env.LANGFUSE_SECRET_KEY || "sk-lf-test",
+          baseUrl: process.env.LANGFUSE_HOST || "http://localhost:3000",
+          flushAt: 1,
+          flushInterval: 1000
+        });
+        
+        // Create coordinator trace
+        async function coordinateSwarm() {
+          const trace = langfuse.trace({
+            id: "coordinator-" + Date.now(),
+            name: "Swarm Coordination Cycle",
+            metadata: {
+              swarmId: process.env.SWARM_ID,
+              coordinator: "SwarmCommander",
+              agentCount: 6
+            }
+          });
+          
+          // Coordination steps
+          const steps = [
+            "Initialize swarm agents",
+            "Distribute tasks",
+            "Monitor execution",
+            "Aggregate results"
+          ];
+          
+          for (const step of steps) {
+            const span = trace.span({
+              name: step,
+              startTime: new Date()
+            });
+            
+            // Simulate work
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 100));
+            
+            span.end({
+              metadata: { completed: true }
+            });
+          }
+          
+          trace.update({
+            output: { coordinated: true, timestamp: new Date() }
+          });
+          
+          await langfuse.flushAsync();
+          console.log("✅ Coordination cycle completed");
+        }
+        
+        // Run coordination every 10 seconds
+        setInterval(coordinateSwarm, 10000);
+        coordinateSwarm(); // Initial run
+        
+        // Health endpoint
+        http.createServer((req, res) => {
+          res.writeHead(200, {"Content-Type": "application/json"});
+          res.end(JSON.stringify({ status: "healthy", role: "coordinator" }));
+        }).listen(8001);
+        
+        console.log("🎯 Swarm Coordinator ready on port 8001");
+        EOF
+        node /app.js
+      '
+    networks:
+      - langfuse-testing-network
+    depends_on:
+      - langfuse-test-langfuse-1
+    restart: unless-stopped
+
+  # DataScout Agent - Analyzes traces
+  swarm-datascout:
+    image: node:20-alpine
+    container_name: swarm-datascout
+    environment:
+      - LANGFUSE_HOST=http://langfuse-test-langfuse-1:3000
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - AGENT_NAME=DataScout
+      - AGENT_TYPE=researcher
+    command: |
+      sh -c '
+        npm install langfuse node-fetch
+        cat > /agent.js << "EOF"
+        const Langfuse = require("langfuse").Langfuse;
+        
+        const langfuse = new Langfuse({
+          publicKey: process.env.LANGFUSE_PUBLIC_KEY || "pk-lf-test",
+          secretKey: process.env.LANGFUSE_SECRET_KEY || "sk-lf-test",
+          baseUrl: process.env.LANGFUSE_HOST,
+          flushAt: 1
+        });
+        
+        console.log("🔍 DataScout Agent Active");
+        
+        async function analyzeData() {
+          const trace = langfuse.trace({
+            name: "Data Analysis Task",
+            metadata: {
+              agent: "DataScout",
+              type: "pattern_analysis"
+            }
+          });
+          
+          // Simulate data collection
+          const collectSpan = trace.span({ name: "Collect trace data" });
+          await new Promise(resolve => setTimeout(resolve, 400));
+          collectSpan.end({ output: { traces_collected: Math.floor(Math.random() * 100) + 50 } });
+          
+          // Pattern recognition
+          const patternSpan = trace.span({ name: "Pattern recognition" });
+          await new Promise(resolve => setTimeout(resolve, 600));
+          patternSpan.end({ output: { patterns_found: Math.floor(Math.random() * 10) + 5 } });
+          
+          // Analysis
+          const analysisSpan = trace.span({ name: "Statistical analysis" });
+          await new Promise(resolve => setTimeout(resolve, 800));
+          analysisSpan.end({ output: { confidence: (Math.random() * 0.3 + 0.7).toFixed(2) } });
+          
+          trace.update({
+            output: {
+              status: "completed",
+              insights: Math.floor(Math.random() * 5) + 3
+            }
+          });
+          
+          await langfuse.flushAsync();
+          console.log(`[${new Date().toISOString()}] Analysis completed`);
+        }
+        
+        // Run analysis every 15 seconds
+        setInterval(analyzeData, 15000);
+        analyzeData();
+        EOF
+        node /agent.js
+      '
+    networks:
+      - langfuse-testing-network
+    depends_on:
+      - swarm-coordinator
+    restart: unless-stopped
+
+  # LiveTraceBuilder Agent - Generates traces
+  swarm-tracebuilder:
+    image: node:20-alpine
+    container_name: swarm-tracebuilder
+    environment:
+      - LANGFUSE_HOST=http://langfuse-test-langfuse-1:3000
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - AGENT_NAME=LiveTraceBuilder
+      - AGENT_TYPE=coder
+    command: |
+      sh -c '
+        npm install langfuse
+        cat > /agent.js << "EOF"
+        const Langfuse = require("langfuse").Langfuse;
+        
+        const langfuse = new Langfuse({
+          publicKey: process.env.LANGFUSE_PUBLIC_KEY || "pk-lf-test",
+          secretKey: process.env.LANGFUSE_SECRET_KEY || "sk-lf-test",
+          baseUrl: process.env.LANGFUSE_HOST,
+          flushAt: 1
+        });
+        
+        console.log("🛠️ LiveTraceBuilder Agent Active");
+        
+        async function generateTrace() {
+          const operations = [
+            "API Request Processing",
+            "Database Query Execution",
+            "Cache Operation",
+            "Message Queue Processing",
+            "Webhook Delivery"
+          ];
+          
+          const operation = operations[Math.floor(Math.random() * operations.length)];
+          
+          const trace = langfuse.trace({
+            name: operation,
+            metadata: {
+              agent: "LiveTraceBuilder",
+              environment: "production",
+              version: "1.0.0"
+            }
+          });
+          
+          // Simulate operation steps
+          const steps = Math.floor(Math.random() * 3) + 2;
+          for (let i = 0; i < steps; i++) {
+            const span = trace.span({
+              name: `Step ${i + 1}`,
+              input: { step: i + 1, total: steps }
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 300 + 100));
+            
+            span.end({
+              output: { 
+                success: true,
+                duration: span.endTime - span.startTime
+              }
+            });
+          }
+          
+          trace.update({
+            output: {
+              success: true,
+              steps_completed: steps,
+              timestamp: new Date()
+            }
+          });
+          
+          await langfuse.flushAsync();
+          console.log(`[${new Date().toISOString()}] Generated trace: ${operation}`);
+        }
+        
+        // Generate traces every 5 seconds
+        setInterval(generateTrace, 5000);
+        generateTrace();
+        EOF
+        node /agent.js
+      '
+    networks:
+      - langfuse-testing-network
+    depends_on:
+      - swarm-coordinator
+    restart: unless-stopped
+
+  # PerformanceAnalyst Agent - Monitors performance
+  swarm-performance:
+    image: node:20-alpine
+    container_name: swarm-performance
+    environment:
+      - LANGFUSE_HOST=http://langfuse-test-langfuse-1:3000
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - AGENT_NAME=PerformanceAnalyst
+      - AGENT_TYPE=analyst
+    command: |
+      sh -c '
+        npm install langfuse
+        cat > /agent.js << "EOF"
+        const Langfuse = require("langfuse").Langfuse;
+        
+        const langfuse = new Langfuse({
+          publicKey: process.env.LANGFUSE_PUBLIC_KEY || "pk-lf-test",
+          secretKey: process.env.LANGFUSE_SECRET_KEY || "sk-lf-test",
+          baseUrl: process.env.LANGFUSE_HOST,
+          flushAt: 1
+        });
+        
+        console.log("📊 PerformanceAnalyst Agent Active");
+        
+        async function analyzePerformance() {
+          const trace = langfuse.trace({
+            name: "Performance Analysis",
+            metadata: {
+              agent: "PerformanceAnalyst",
+              type: "system_metrics"
+            }
+          });
+          
+          // Measure latency
+          const latencySpan = trace.span({ name: "Measure latency" });
+          const latencies = [];
+          for (let i = 0; i < 5; i++) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+            latencies.push(Math.random() * 100 + 20);
+          }
+          latencySpan.end({ output: { avg_latency: latencies.reduce((a,b) => a+b) / latencies.length } });
+          
+          // Identify bottlenecks
+          const bottleneckSpan = trace.span({ name: "Identify bottlenecks" });
+          await new Promise(resolve => setTimeout(resolve, 500));
+          bottleneckSpan.end({ output: { bottlenecks_found: Math.floor(Math.random() * 3) } });
+          
+          // Generate recommendations
+          const recommendSpan = trace.span({ name: "Generate recommendations" });
+          await new Promise(resolve => setTimeout(resolve, 400));
+          recommendSpan.end({ output: { recommendations: Math.floor(Math.random() * 5) + 2 } });
+          
+          trace.update({
+            output: {
+              status: "analyzed",
+              performance_score: (Math.random() * 20 + 80).toFixed(1)
+            }
+          });
+          
+          await langfuse.flushAsync();
+          console.log(`[${new Date().toISOString()}] Performance analysis completed`);
+        }
+        
+        // Analyze every 20 seconds
+        setInterval(analyzePerformance, 20000);
+        analyzePerformance();
+        EOF
+        node /agent.js
+      '
+    networks:
+      - langfuse-testing-network
+    depends_on:
+      - swarm-coordinator
+    restart: unless-stopped
+
+  # QualityAssurance Agent - Tests integration
+  swarm-quality:
+    image: node:20-alpine
+    container_name: swarm-quality
+    environment:
+      - LANGFUSE_HOST=http://langfuse-test-langfuse-1:3000
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - AGENT_NAME=QualityAssurance
+      - AGENT_TYPE=tester
+    command: |
+      sh -c '
+        npm install langfuse
+        cat > /agent.js << "EOF"
+        const Langfuse = require("langfuse").Langfuse;
+        
+        const langfuse = new Langfuse({
+          publicKey: process.env.LANGFUSE_PUBLIC_KEY || "pk-lf-test",
+          secretKey: process.env.LANGFUSE_SECRET_KEY || "sk-lf-test",
+          baseUrl: process.env.LANGFUSE_HOST,
+          flushAt: 1
+        });
+        
+        console.log("✅ QualityAssurance Agent Active");
+        
+        async function runTests() {
+          const testSuites = [
+            "Integration Tests",
+            "API Tests",
+            "Performance Tests",
+            "Security Tests"
+          ];
+          
+          const suite = testSuites[Math.floor(Math.random() * testSuites.length)];
+          
+          const trace = langfuse.trace({
+            name: suite,
+            metadata: {
+              agent: "QualityAssurance",
+              suite: suite.toLowerCase().replace(" ", "_")
+            }
+          });
+          
+          // Setup
+          const setupSpan = trace.span({ name: "Test setup" });
+          await new Promise(resolve => setTimeout(resolve, 200));
+          setupSpan.end();
+          
+          // Execute tests
+          const testCount = Math.floor(Math.random() * 20) + 10;
+          const executeSpan = trace.span({ name: "Execute tests" });
+          await new Promise(resolve => setTimeout(resolve, testCount * 30));
+          executeSpan.end({ output: { tests_run: testCount } });
+          
+          // Validate
+          const validateSpan = trace.span({ name: "Validate results" });
+          await new Promise(resolve => setTimeout(resolve, 400));
+          const passed = testCount - Math.floor(Math.random() * 3);
+          validateSpan.end({ output: { passed, failed: testCount - passed } });
+          
+          trace.update({
+            output: {
+              suite,
+              total_tests: testCount,
+              passed,
+              failed: testCount - passed,
+              success_rate: ((passed / testCount) * 100).toFixed(1) + "%"
+            }
+          });
+          
+          await langfuse.flushAsync();
+          console.log(`[${new Date().toISOString()}] ${suite} completed: ${passed}/${testCount} passed`);
+        }
+        
+        // Run tests every 25 seconds
+        setInterval(runTests, 25000);
+        runTests();
+        EOF
+        node /agent.js
+      '
+    networks:
+      - langfuse-testing-network
+    depends_on:
+      - swarm-coordinator
+    restart: unless-stopped
+
+networks:
+  langfuse-testing-network:
+    external: true

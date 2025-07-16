@@ -28,7 +28,7 @@ const io = new Server(server, {
 const config = {
   port: process.env.PORT || 3002,
   langfuseHost: process.env.LANGFUSE_HOST || 'http://localhost:3000',
-  langfusePublicKey: process.env.LANGFUSE_PUBLIC_KEY || 'pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20',
+  langfusePublicKey: process.env.LANGFUSE_PUBLIC_KEY || 'pk-lf-REDACTED',
   langfuseSecretKey: process.env.LANGFUSE_SECRET_KEY || 'sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60',
   coordinatorUrl: process.env.COORDINATOR_URL || 'http://localhost:8000'
 };

@@ -1,0 +1,191 @@
+version: '3.8'
+
+# Development Overrides - Hot reload, debugging, and development tools
+# Use with: docker-compose -f docker-compose.swarm-core.yml -f docker-compose.claude-flow-services.yml -f docker-compose.development.override.yml up
+
+services:
+  # Manager with development features
+  manager:
+    build:
+      target: development
+    ports:
+      - "8080:8080"
+      - "9229:9229"  # Node.js debugging
+    environment:
+      NODE_ENV: development
+      DEBUG: "swarm:*"
+      LOG_LEVEL: debug
+      ENABLE_HOT_RELOAD: true
+    volumes:
+      - ./apps/manager:/app:delegated
+      - ./shared:/shared:delegated
+      - /app/node_modules
+      - /app/dist
+    command: npm run dev
+
+  # Dashboard with development features
+  dashboard:
+    build:
+      target: development
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: 1
+      WATCHPACK_POLLING: true
+      CHOKIDAR_USEPOLLING: true
+    volumes:
+      - ./apps/dashboard:/app:delegated
+      - ./shared:/shared:delegated
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+
+  # Worker with development features
+  worker:
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+      DEBUG: "worker:*"
+      LOG_LEVEL: debug
+    volumes:
+      - ./apps/worker:/app:delegated
+      - ./shared:/shared:delegated
+      - /app/node_modules
+    command: npm run dev
+
+  # Hive Mind with development features
+  hive-mind:
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+      DEBUG: "hive-mind:*"
+      LOG_LEVEL: debug
+    volumes:
+      - ./apps/hive-mind:/app:delegated
+      - /app/node_modules
+    command: npm run dev
+
+  # Development PostgreSQL with sample data
+  postgres:
+    environment:
+      POSTGRES_DB: swarm_dev
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+      - ./scripts/postgres/dev-seed.sql:/docker-entrypoint-initdb.d/99-dev-seed.sql:ro
+    ports:
+      - "5432:5432"
+
+  # Development Redis without password
+  redis:
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+
+  # Langfuse with development settings
+  langfuse:
+    environment:
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: true
+      NEXTAUTH_PROVIDERS: credentials,github
+      LANGFUSE_LOG_LEVEL: debug
+    ports:
+      - "3001:3000"
+
+  # Development Tools Container
+  devtools:
+    image: node:18-alpine
+    container_name: swarm-devtools
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:delegated
+      - devtools-node-modules:/workspace/node_modules
+    networks:
+      - swarm-network
+    command: tail -f /dev/null
+    restart: unless-stopped
+
+  # pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: swarm-pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@swarm-dev.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - swarm-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # Redis Commander for Redis management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: swarm-redis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      REDIS_HOSTS: local:redis:6379:0
+    networks:
+      - swarm-network
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # MailHog for email testing
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: swarm-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - swarm-network
+    restart: unless-stopped
+
+  # Documentation server
+  docs:
+    image: nginx:alpine
+    container_name: swarm-docs
+    ports:
+      - "8082:80"
+    volumes:
+      - ./docs:/usr/share/nginx/html:ro
+      - ./README.md:/usr/share/nginx/html/README.md:ro
+    networks:
+      - swarm-network
+    restart: unless-stopped
+
+  # File watcher for automatic rebuilds
+  file-watcher:
+    image: node:18-alpine
+    container_name: swarm-file-watcher
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:delegated
+    networks:
+      - swarm-network
+    command: >
+      sh -c "
+        npm install -g nodemon &&
+        nodemon --watch apps --watch shared --ext js,ts,tsx,json --exec 'echo File changed at $(date)'
+      "
+    restart: unless-stopped
+
+volumes:
+  postgres-dev-data:
+    name: swarm-postgres-dev-data
+    driver: local
+  pgadmin-data:
+    name: swarm-pgadmin-data
+    driver: local
+  devtools-node-modules:
+    name: swarm-devtools-node-modules
+    driver: local

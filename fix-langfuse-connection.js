@@ -9,7 +9,7 @@ const http = require('http');
 
 const LANGFUSE_HOST = 'localhost:3000';
 const SECRET_KEY = 'sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60';
-const PUBLIC_KEY = 'pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20';
+const PUBLIC_KEY = 'pk-lf-REDACTED';
 
 console.log('🔍 DIRECT LANGFUSE API TEST');
 console.log('══════════════════════════');

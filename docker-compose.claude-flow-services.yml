@@ -1,0 +1,272 @@
+version: '3.8'
+
+# Claude Flow Services Module - Core application services
+# Use with core: docker-compose -f docker-compose.swarm-core.yml -f docker-compose.claude-flow-services.yml up
+
+services:
+  # Manager API Service - Core API and coordination
+  manager:
+    build:
+      context: .
+      dockerfile: apps/manager/Dockerfile
+      args:
+        NODE_ENV: ${NODE_ENV:-production}
+    container_name: swarm-manager
+    ports:
+      - "${MANAGER_PORT:-8080}:8080"
+    environment:
+      # Core Configuration
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 8080
+      
+      # Database & Cache
+      REDIS_URL: redis://:${REDIS_PASSWORD:-swarm-redis}@redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres}@postgres:5432/${POSTGRES_DB:-swarm_core}
+      
+      # Security
+      JWT_SECRET: ${JWT_SECRET:-swarm-manager-jwt-secret}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://dashboard:3000}
+      
+      # Swarm Configuration
+      SWARM_MAX_AGENTS: ${SWARM_MAX_AGENTS:-20}
+      AGENT_TIMEOUT: ${AGENT_TIMEOUT:-300000}
+      COORDINATION_INTERVAL: ${COORDINATION_INTERVAL:-5000}
+      
+      # External Services
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      
+      # Rate Limiting
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-900000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      
+      # Monitoring
+      ENABLE_METRICS: ${ENABLE_METRICS:-true}
+      METRICS_PORT: ${METRICS_PORT:-9090}
+      
+    volumes:
+      - manager-data:/app/data
+      - manager-logs:/app/logs
+      - manager-config:/app/config
+    networks:
+      - swarm-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      hive-mind:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Dashboard UI Service - Web interface
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+      args:
+        NODE_ENV: ${NODE_ENV:-production}
+    container_name: swarm-dashboard
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    environment:
+      # Core Configuration
+      NODE_ENV: ${NODE_ENV:-production}
+      
+      # API Connections
+      NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:8080}
+      NEXT_PUBLIC_WS_URL: ${WS_URL:-ws://localhost:8080}
+      
+      # Langfuse Integration
+      NEXT_PUBLIC_LANGFUSE_URL: ${LANGFUSE_URL:-http://localhost:3001}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      
+      # External Services
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      
+      # Performance
+      NEXT_TELEMETRY_DISABLED: 1
+      
+    volumes:
+      - dashboard-cache:/app/.next/cache
+      - dashboard-data:/app/data
+    networks:
+      - swarm-network
+    depends_on:
+      manager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1.5G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Worker Service - Swarm agent execution
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      args:
+        NODE_ENV: ${NODE_ENV:-production}
+    container_name: swarm-worker
+    environment:
+      # Core Configuration
+      NODE_ENV: ${NODE_ENV:-production}
+      
+      # Database & Cache
+      REDIS_URL: redis://:${REDIS_PASSWORD:-swarm-redis}@redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres}@postgres:5432/${POSTGRES_DB:-swarm_core}
+      
+      # Worker Configuration
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      WORKER_NAME: ${WORKER_NAME:-worker-1}
+      WORKER_TIMEOUT: ${WORKER_TIMEOUT:-300000}
+      
+      # Swarm Integration
+      HIVE_MIND_URL: http://hive-mind:8888
+      MANAGER_URL: http://manager:8080
+      
+      # Langfuse Integration
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      
+      # Resource Management
+      MAX_MEMORY_USAGE: ${MAX_MEMORY_USAGE:-1G}
+      CLEANUP_INTERVAL: ${CLEANUP_INTERVAL:-600000}
+      
+    volumes:
+      - worker-data:/app/.swarm
+      - worker-logs:/app/logs
+      - worker-cache:/app/cache
+    networks:
+      - swarm-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      hive-mind:
+        condition: service_healthy
+      manager:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: ${WORKER_REPLICAS:-2}
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Agent Generator - Produces swarm agents and traces
+  agent-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile.all-in-one-swarm
+    container_name: swarm-agent-generator
+    ports:
+      - "${AGENT_GENERATOR_PORT:-8888}:8888"
+    environment:
+      # Langfuse Integration
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: langfuse
+      LANGFUSE_PORT: 3000
+      
+      # Generator Configuration
+      AGENT_GENERATION_INTERVAL: ${AGENT_GENERATION_INTERVAL:-30000}
+      TRACE_BATCH_SIZE: ${TRACE_BATCH_SIZE:-50}
+      MAX_CONCURRENT_AGENTS: ${MAX_CONCURRENT_AGENTS:-10}
+      
+      # Swarm Integration
+      HIVE_MIND_URL: http://hive-mind:8888
+      MANAGER_URL: http://manager:8080
+      
+    volumes:
+      - agent-generator-data:/app/data
+      - agent-generator-logs:/app/logs
+    networks:
+      - swarm-network
+    depends_on:
+      langfuse:
+        condition: service_healthy
+      hive-mind:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8888/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+volumes:
+  manager-data:
+    name: swarm-manager-data
+    driver: local
+  manager-logs:
+    name: swarm-manager-logs
+    driver: local
+  manager-config:
+    name: swarm-manager-config
+    driver: local
+  dashboard-cache:
+    name: swarm-dashboard-cache
+    driver: local
+  dashboard-data:
+    name: swarm-dashboard-data
+    driver: local
+  worker-data:
+    name: swarm-worker-data
+    driver: local
+  worker-logs:
+    name: swarm-worker-logs
+    driver: local
+  worker-cache:
+    name: swarm-worker-cache
+    driver: local
+  agent-generator-data:
+    name: swarm-agent-generator-data
+    driver: local
+  agent-generator-logs:
+    name: swarm-agent-generator-logs
+    driver: local

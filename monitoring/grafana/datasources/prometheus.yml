@@ -1,0 +1,44 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    basicAuth: false
+    jsonData:
+      timeInterval: "15s"
+      queryTimeout: "60s"
+      httpMethod: "POST"
+    version: 1
+
+  - name: ClickHouse
+    type: vertamedia-clickhouse-datasource
+    access: proxy
+    url: http://clickhouse:8123
+    database: swarm_analytics
+    basicAuth: false
+    basicAuthUser: clickhouse
+    secureJsonData:
+      password: ${CLICKHOUSE_PASSWORD}
+    jsonData:
+      defaultDatabase: swarm_analytics
+      useBold: false
+      useDarkTheme: false
+    version: 1
+
+  - name: Redis
+    type: redis-datasource
+    access: proxy
+    url: redis://redis:6379
+    secureJsonData:
+      password: ${REDIS_PASSWORD}
+    jsonData:
+      client: "standalone"
+      poolSize: 5
+      timeout: 10
+      pingInterval: 0
+      pipelineWindow: 0
+    version: 1

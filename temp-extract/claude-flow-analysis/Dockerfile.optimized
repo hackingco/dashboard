@@ -1,0 +1,147 @@
+# Multi-stage optimized Dockerfile for Claude Flow
+# Optimized for build speed, layer caching, and minimal final image size
+
+# ===== BUILD STAGE =====
+FROM node:20-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    git \
+    && ln -sf python3 /usr/bin/python
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files for dependency caching
+COPY package*.json ./
+COPY packages/*/package*.json ./packages/*/
+COPY src/migration/package*.json ./src/migration/
+
+# Install dependencies with npm ci for faster, reliable builds
+RUN npm ci --only=production --ignore-scripts
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build:packages && \
+    npm run build && \
+    npm prune --production
+
+# ===== RUNTIME STAGE =====
+FROM node:20-alpine AS runtime
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S claude && \
+    adduser -S claude -u 1001
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    dumb-init \
+    sqlite
+
+# Set working directory
+WORKDIR /app
+
+# Copy built application from builder stage
+COPY --from=builder --chown=claude:claude /app/dist ./dist
+COPY --from=builder --chown=claude:claude /app/bin ./bin
+COPY --from=builder --chown=claude:claude /app/node_modules ./node_modules
+COPY --from=builder --chown=claude:claude /app/package.json ./package.json
+
+# Copy configuration and assets
+COPY --from=builder --chown=claude:claude /app/.claude ./.claude
+COPY --from=builder --chown=claude:claude /app/packages ./packages
+
+# Create necessary directories
+RUN mkdir -p /app/.swarm /app/logs /app/data && \
+    chown -R claude:claude /app
+
+# Switch to non-root user
+USER claude
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD npm run health-check || exit 1
+
+# Expose port
+EXPOSE 3000
+
+# Use dumb-init for proper signal handling
+ENTRYPOINT ["dumb-init", "--"]
+
+# Default command
+CMD ["node", "dist/cli/main.js"]
+
+# ===== DEVELOPMENT STAGE =====
+FROM node:20-alpine AS development
+
+# Install development dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    git \
+    sqlite \
+    && ln -sf python3 /usr/bin/python
+
+# Create non-root user
+RUN addgroup -g 1001 -S claude && \
+    adduser -S claude -u 1001
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY packages/*/package*.json ./packages/*/
+COPY src/migration/package*.json ./src/migration/
+
+# Install all dependencies (including dev)
+RUN npm ci
+
+# Copy source code
+COPY --chown=claude:claude . .
+
+# Build for development
+RUN npm run build:packages
+
+# Create necessary directories
+RUN mkdir -p /app/.swarm /app/logs /app/data && \
+    chown -R claude:claude /app
+
+USER claude
+
+# Expose development ports
+EXPOSE 3000 9229
+
+# Development command with hot reload
+CMD ["npm", "run", "dev"]
+
+# ===== TESTING STAGE =====
+FROM development AS testing
+
+# Install testing dependencies and run tests
+RUN npm run test:packages && \
+    npm run test:coverage
+
+# Keep test results
+RUN mkdir -p /app/test-results && \
+    cp -r coverage /app/test-results/ || true
+
+# ===== PRODUCTION OPTIMIZATIONS =====
+
+# Labels for metadata
+LABEL org.opencontainers.image.title="Claude Flow" \
+      org.opencontainers.image.description="Enterprise-grade AI agent orchestration" \
+      org.opencontainers.image.version="2.0.0-alpha.49" \
+      org.opencontainers.image.vendor="Claude Flow Team" \
+      org.opencontainers.image.source="https://github.com/ruvnet/claude-code-flow"
+
+# Environment variables for optimization
+ENV NODE_ENV=production \
+    NODE_OPTIONS="--enable-source-maps --max-old-space-size=2048" \
+    NPM_CONFIG_LOGLEVEL=warn \
+    NPM_CONFIG_PRODUCTION=true

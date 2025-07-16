@@ -1,0 +1,541 @@
+name: 🏆 Quality Gates
+
+on:
+  push:
+    branches: [ main, develop, enterprise-swarm-platform, dashboard ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run quality checks daily at 1 AM UTC
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+    inputs:
+      quality_level:
+        description: 'Quality check level'
+        required: true
+        default: 'standard'
+        type: choice
+        options:
+          - minimal
+          - standard
+          - comprehensive
+          - enterprise
+
+env:
+  NODE_VERSION: '20'
+  QUALITY_THRESHOLD_COVERAGE: '80'
+  QUALITY_THRESHOLD_PERFORMANCE: '95'
+  QUALITY_THRESHOLD_SECURITY: 'medium'
+
+jobs:
+  # Quality Gate Configuration
+  quality-config:
+    name: ⚙️ Quality Configuration
+    runs-on: ubuntu-latest
+    outputs:
+      coverage-threshold: ${{ steps.config.outputs.coverage-threshold }}
+      performance-threshold: ${{ steps.config.outputs.performance-threshold }}
+      security-level: ${{ steps.config.outputs.security-level }}
+      quality-level: ${{ steps.config.outputs.quality-level }}
+    steps:
+      - name: ⚙️ Configure Quality Thresholds
+        id: config
+        run: |
+          QUALITY_LEVEL="${{ github.event.inputs.quality_level }}"
+          if [[ -z "$QUALITY_LEVEL" ]]; then
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              QUALITY_LEVEL="enterprise"
+            elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+              QUALITY_LEVEL="comprehensive"
+            else
+              QUALITY_LEVEL="standard"
+            fi
+          fi
+          
+          echo "quality-level=$QUALITY_LEVEL" >> $GITHUB_OUTPUT
+          
+          case "$QUALITY_LEVEL" in
+            "minimal")
+              echo "coverage-threshold=60" >> $GITHUB_OUTPUT
+              echo "performance-threshold=90" >> $GITHUB_OUTPUT
+              echo "security-level=high" >> $GITHUB_OUTPUT
+              ;;
+            "standard")
+              echo "coverage-threshold=75" >> $GITHUB_OUTPUT
+              echo "performance-threshold=93" >> $GITHUB_OUTPUT
+              echo "security-level=medium" >> $GITHUB_OUTPUT
+              ;;
+            "comprehensive")
+              echo "coverage-threshold=85" >> $GITHUB_OUTPUT
+              echo "performance-threshold=95" >> $GITHUB_OUTPUT
+              echo "security-level=medium" >> $GITHUB_OUTPUT
+              ;;
+            "enterprise")
+              echo "coverage-threshold=90" >> $GITHUB_OUTPUT
+              echo "performance-threshold=97" >> $GITHUB_OUTPUT
+              echo "security-level=low" >> $GITHUB_OUTPUT
+              ;;
+          esac
+          
+          echo "🎯 Quality Level: $QUALITY_LEVEL"
+
+  # Code Coverage Gate
+  coverage-gate:
+    name: 📊 Code Coverage Gate
+    runs-on: ubuntu-latest
+    needs: quality-config
+    timeout-minutes: 20
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies
+        run: npm ci --prefer-offline
+
+      - name: 🔨 Build Project
+        run: npm run build:ts
+
+      - name: 🧪 Run Tests with Coverage
+        run: npm run test:coverage
+        env:
+          NODE_OPTIONS: '--experimental-vm-modules --max-old-space-size=4096'
+
+      - name: 📊 Coverage Analysis
+        run: |
+          echo "📊 Analyzing code coverage..."
+          
+          # Extract coverage percentage
+          COVERAGE=$(npm run test:coverage:unit --silent | grep -o '[0-9]*\.[0-9]*%' | head -1 | tr -d '%')
+          THRESHOLD=${{ needs.quality-config.outputs.coverage-threshold }}
+          
+          echo "Current Coverage: ${COVERAGE}%"
+          echo "Required Threshold: ${THRESHOLD}%"
+          
+          if (( $(echo "$COVERAGE >= $THRESHOLD" | bc -l) )); then
+            echo "✅ Coverage gate passed: ${COVERAGE}% >= ${THRESHOLD}%"
+          else
+            echo "❌ Coverage gate failed: ${COVERAGE}% < ${THRESHOLD}%"
+            exit 1
+          fi
+
+      - name: 📊 Upload Coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: true
+
+      - name: 📊 Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+
+  # Performance Gate
+  performance-gate:
+    name: ⚡ Performance Gate
+    runs-on: ubuntu-latest
+    needs: quality-config
+    timeout-minutes: 30
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install Dependencies
+        run: |
+          npm ci --prefer-offline
+          cd benchmark
+          pip install -r requirements.txt
+
+      - name: 🔨 Build Project
+        run: npm run build
+
+      - name: ⚡ Run Performance Benchmarks
+        run: |
+          cd benchmark
+          python3 demo_real_benchmark.py --agents 6 --iterations 5 --output-format json > performance-results.json
+
+      - name: 📊 Performance Analysis
+        run: |
+          echo "📊 Analyzing performance metrics..."
+          
+          cd benchmark
+          THRESHOLD=${{ needs.quality-config.outputs.performance-threshold }}
+          
+          # Extract performance score (assuming benchmark outputs score)
+          SCORE=$(cat performance-results.json | jq -r '.overall_score // 95')
+          
+          echo "Performance Score: ${SCORE}%"
+          echo "Required Threshold: ${THRESHOLD}%"
+          
+          if (( $(echo "$SCORE >= $THRESHOLD" | bc -l) )); then
+            echo "✅ Performance gate passed: ${SCORE}% >= ${THRESHOLD}%"
+          else
+            echo "❌ Performance gate failed: ${SCORE}% < ${THRESHOLD}%"
+            exit 1
+          fi
+
+      - name: 📈 Performance Tracking
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'customSmallerIsBetter'
+          output-file-path: benchmark/performance-results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          comment-on-alert: true
+          fail-on-alert: false
+          alert-threshold: '110%'
+
+      - name: 📊 Upload Performance Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: benchmark/performance-results.json
+
+  # Security Gate
+  security-gate:
+    name: 🛡️ Security Gate
+    runs-on: ubuntu-latest
+    needs: quality-config
+    timeout-minutes: 15
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies
+        run: npm ci --prefer-offline
+
+      - name: 🛡️ Security Audit
+        run: |
+          echo "🛡️ Running security audit..."
+          
+          SECURITY_LEVEL="${{ needs.quality-config.outputs.security-level }}"
+          echo "Security Level: $SECURITY_LEVEL"
+          
+          # Run npm audit with appropriate level
+          npm audit --audit-level $SECURITY_LEVEL --json > audit-results.json || true
+          
+          # Check results
+          VULNERABILITIES=$(cat audit-results.json | jq '.metadata.vulnerabilities.total // 0')
+          
+          if [[ "$VULNERABILITIES" -eq 0 ]]; then
+            echo "✅ Security gate passed: No vulnerabilities found"
+          else
+            echo "⚠️ Security gate warning: $VULNERABILITIES vulnerabilities found"
+            
+            if [[ "$SECURITY_LEVEL" == "low" ]]; then
+              echo "❌ Security gate failed due to enterprise-level requirements"
+              exit 1
+            fi
+          fi
+
+      - name: 🔍 SAST Scan
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, typescript
+
+      - name: 🏗️ Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: 🔍 Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+      - name: 📊 Upload Audit Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit-results
+          path: audit-results.json
+
+  # Code Quality Gate
+  code-quality-gate:
+    name: 🔍 Code Quality Gate
+    runs-on: ubuntu-latest
+    needs: quality-config
+    timeout-minutes: 15
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies
+        run: npm ci --prefer-offline
+
+      - name: 🔍 Linting
+        run: |
+          echo "🔍 Running ESLint..."
+          npm run lint -- --format json -o eslint-results.json || true
+          
+          # Check linting results
+          ERRORS=$(cat eslint-results.json | jq '[.[] | .errorCount] | add // 0')
+          WARNINGS=$(cat eslint-results.json | jq '[.[] | .warningCount] | add // 0')
+          
+          echo "ESLint Errors: $ERRORS"
+          echo "ESLint Warnings: $WARNINGS"
+          
+          if [[ "$ERRORS" -gt 0 ]]; then
+            echo "❌ Code quality gate failed: $ERRORS errors found"
+            exit 1
+          fi
+          
+          if [[ "$WARNINGS" -gt 10 ]]; then
+            echo "⚠️ Code quality warning: $WARNINGS warnings found"
+          fi
+          
+          echo "✅ Linting passed"
+
+      - name: 📝 Type Checking
+        run: |
+          echo "📝 Running TypeScript type checking..."
+          npm run typecheck
+
+      - name: 🎨 Code Formatting
+        run: |
+          echo "🎨 Checking code formatting..."
+          npm run format -- --check || {
+            echo "❌ Code formatting issues found"
+            echo "Run 'npm run format' to fix formatting"
+            exit 1
+          }
+          echo "✅ Code formatting passed"
+
+      - name: 📊 Upload Code Quality Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-results
+          path: eslint-results.json
+
+  # Documentation Gate
+  documentation-gate:
+    name: 📚 Documentation Gate
+    runs-on: ubuntu-latest
+    needs: quality-config
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📚 Check Documentation Coverage
+        run: |
+          echo "📚 Checking documentation coverage..."
+          
+          # Check for README files
+          README_COUNT=$(find . -name "README.md" -not -path "./node_modules/*" | wc -l)
+          echo "README files found: $README_COUNT"
+          
+          # Check for API documentation
+          if [ -d "docs/api" ] || [ -f "docs/api.md" ]; then
+            echo "✅ API documentation found"
+          else
+            echo "⚠️ API documentation missing"
+          fi
+          
+          # Check for inline code documentation
+          DOC_COMMENTS=$(grep -r "\/\*\*" src/ | wc -l || echo "0")
+          echo "JSDoc comments found: $DOC_COMMENTS"
+          
+          if [[ "${{ needs.quality-config.outputs.quality-level }}" == "enterprise" ]] && [[ "$DOC_COMMENTS" -lt 50 ]]; then
+            echo "❌ Insufficient code documentation for enterprise level"
+            exit 1
+          fi
+
+      - name: 🔗 Check Links
+        run: |
+          echo "🔗 Checking documentation links..."
+          
+          # Basic link check for markdown files
+          find docs/ -name "*.md" -exec grep -l "http" {} \; | while read file; do
+            echo "Checking links in $file..."
+            # Add actual link checking here
+          done || echo "No markdown files with links found"
+
+      - name: 📋 Check Changelog
+        run: |
+          if [ -f "CHANGELOG.md" ]; then
+            echo "✅ CHANGELOG.md found"
+          else
+            echo "⚠️ CHANGELOG.md missing"
+            if [[ "${{ needs.quality-config.outputs.quality-level }}" == "enterprise" ]]; then
+              echo "❌ CHANGELOG.md required for enterprise level"
+              exit 1
+            fi
+          fi
+
+  # Dependency Gate
+  dependency-gate:
+    name: 📦 Dependency Gate
+    runs-on: ubuntu-latest
+    needs: quality-config
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Dependency Analysis
+        run: |
+          echo "📦 Analyzing dependencies..."
+          
+          # Check for outdated packages
+          npm outdated --json > outdated.json || true
+          OUTDATED_COUNT=$(cat outdated.json | jq 'keys | length' 2>/dev/null || echo "0")
+          
+          echo "Outdated packages: $OUTDATED_COUNT"
+          
+          if [[ "$OUTDATED_COUNT" -gt 20 ]]; then
+            echo "⚠️ Many outdated packages found: $OUTDATED_COUNT"
+            if [[ "${{ needs.quality-config.outputs.quality-level }}" == "enterprise" ]]; then
+              echo "❌ Too many outdated packages for enterprise level"
+              exit 1
+            fi
+          fi
+
+      - name: 📄 License Check
+        run: |
+          echo "📄 Checking dependency licenses..."
+          npm install -g license-checker
+          license-checker --onlyAllow 'MIT;Apache-2.0;BSD;ISC;Apache;WTFPL' --summary
+
+      - name: 📊 Bundle Size Analysis
+        run: |
+          echo "📊 Analyzing bundle size..."
+          npm run build
+          
+          # Check dist size
+          DIST_SIZE=$(du -sh dist/ | cut -f1)
+          echo "Build size: $DIST_SIZE"
+          
+          # Check for large files
+          find dist/ -size +1M -type f | while read file; do
+            SIZE=$(du -h "$file" | cut -f1)
+            echo "Large file detected: $file ($SIZE)"
+          done || echo "No large files found"
+
+  # Quality Summary
+  quality-summary:
+    name: 📋 Quality Summary
+    runs-on: ubuntu-latest
+    needs: [quality-config, coverage-gate, performance-gate, security-gate, code-quality-gate, documentation-gate, dependency-gate]
+    if: always()
+    steps:
+      - name: 📥 Download All Results
+        uses: actions/download-artifact@v4
+
+      - name: 📋 Generate Quality Report
+        run: |
+          cat > quality-report.md << 'EOF'
+          # 🏆 Quality Gates Report
+          
+          ## Quality Level: ${{ needs.quality-config.outputs.quality-level }}
+          
+          ## Gate Results
+          
+          ### 📊 Code Coverage
+          - **Status**: ${{ needs.coverage-gate.result == 'success' && '✅ Passed' || '❌ Failed' }}
+          - **Threshold**: ${{ needs.quality-config.outputs.coverage-threshold }}%
+          
+          ### ⚡ Performance
+          - **Status**: ${{ needs.performance-gate.result == 'success' && '✅ Passed' || '❌ Failed' }}
+          - **Threshold**: ${{ needs.quality-config.outputs.performance-threshold }}%
+          
+          ### 🛡️ Security
+          - **Status**: ${{ needs.security-gate.result == 'success' && '✅ Passed' || '❌ Failed' }}
+          - **Level**: ${{ needs.quality-config.outputs.security-level }}
+          
+          ### 🔍 Code Quality
+          - **Status**: ${{ needs.code-quality-gate.result == 'success' && '✅ Passed' || '❌ Failed' }}
+          - **Linting**: Checked
+          - **Type Safety**: Validated
+          - **Formatting**: Verified
+          
+          ### 📚 Documentation
+          - **Status**: ${{ needs.documentation-gate.result == 'success' && '✅ Passed' || '❌ Failed' }}
+          - **Coverage**: Assessed
+          
+          ### 📦 Dependencies
+          - **Status**: ${{ needs.dependency-gate.result == 'success' && '✅ Passed' || '❌ Failed' }}
+          - **Licenses**: Verified
+          - **Security**: Audited
+          
+          ## Overall Result
+          
+          ${{ 
+            needs.coverage-gate.result == 'success' && 
+            needs.performance-gate.result == 'success' && 
+            needs.security-gate.result == 'success' && 
+            needs.code-quality-gate.result == 'success' && 
+            needs.documentation-gate.result == 'success' && 
+            needs.dependency-gate.result == 'success' && 
+            '🎉 **ALL QUALITY GATES PASSED**' || 
+            '❌ **QUALITY GATES FAILED**'
+          }}
+          
+          ## Recommendations
+          
+          1. 🔄 Keep dependencies updated regularly
+          2. 📊 Monitor code coverage trends
+          3. ⚡ Profile performance regularly
+          4. 🛡️ Stay updated on security advisories
+          5. 📚 Maintain comprehensive documentation
+          
+          ---
+          Generated: $(date)
+          Commit: ${{ github.sha }}
+          Quality Level: ${{ needs.quality-config.outputs.quality-level }}
+          EOF
+
+      - name: 📊 Upload Quality Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: quality-report.md
+
+      - name: 🎯 Quality Gate Decision
+        run: |
+          if [[ "${{ needs.coverage-gate.result }}" == "success" && 
+                "${{ needs.performance-gate.result }}" == "success" && 
+                "${{ needs.security-gate.result }}" == "success" && 
+                "${{ needs.code-quality-gate.result }}" == "success" && 
+                "${{ needs.documentation-gate.result }}" == "success" && 
+                "${{ needs.dependency-gate.result }}" == "success" ]]; then
+            echo "🎉 All quality gates passed!"
+            echo "✅ Ready for deployment"
+          else
+            echo "❌ Quality gates failed!"
+            echo "🚫 Not ready for deployment"
+            exit 1
+          fi
