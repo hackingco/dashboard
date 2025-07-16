@@ -1,0 +1,32 @@
+FROM node:18-alpine AS base
+RUN apk add --no-cache libc6-compat curl
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci && npm cache clean --force
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build:dashboard
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Set up directories
+RUN chown -R nextjs:nodejs .next
+
+# Health check script
+RUN echo '#!/bin/sh\ncurl -f http://localhost:3000/api/health || exit 1' > /healthcheck.sh
+RUN chmod +x /healthcheck.sh
+
+USER nextjs
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 CMD ["/healthcheck.sh"]
+
+CMD ["npm", "run", "start:dashboard"]

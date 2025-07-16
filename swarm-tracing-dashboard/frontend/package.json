@@ -1,0 +1,45 @@
+{
+  "name": "swarm-tracing-dashboard-frontend",
+  "version": "1.0.0",
+  "description": "React frontend for Swarm Tracing Dashboard",
+  "private": true,
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "axios": "^1.6.0",
+    "socket.io-client": "^4.7.4",
+    "recharts": "^2.8.0",
+    "react-router-dom": "^6.8.0",
+    "date-fns": "^2.29.3",
+    "@uiw/react-json-view": "^1.4.8",
+    "lucide-react": "^0.292.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "keywords": ["swarm", "tracing", "dashboard", "langfuse", "react"],
+  "author": "Swarm Intelligence",
+  "license": "MIT"
+}

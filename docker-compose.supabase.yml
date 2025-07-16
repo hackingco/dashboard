@@ -1,0 +1,248 @@
+# Supabase Docker Compose Configuration
+# Extends the main docker-compose.yml with Supabase services
+
+version: '3.8'
+
+services:
+  # Supabase Database (PostgreSQL)
+  supabase-db:
+    image: postgres:15-alpine
+    container_name: swarm-supabase-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${SUPABASE_DB_NAME:-swarm_supabase}
+      POSTGRES_USER: ${SUPABASE_DB_USER:-supabase}
+      POSTGRES_PASSWORD: ${SUPABASE_DB_PASSWORD:-supabase_password}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - supabase_db_data:/var/lib/postgresql/data
+      - ./supabase/migrations:/docker-entrypoint-initdb.d
+      - ./supabase-schema.sql:/docker-entrypoint-initdb.d/00-schema.sql
+    ports:
+      - "${SUPABASE_DB_PORT:-5433}:5432"
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SUPABASE_DB_USER:-supabase}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Supabase Auth (GoTrue)
+  supabase-auth:
+    image: supabase/gotrue:v2.143.0
+    container_name: swarm-supabase-auth
+    restart: unless-stopped
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${SUPABASE_API_EXTERNAL_URL:-http://localhost:8000}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://${SUPABASE_DB_USER:-supabase}:${SUPABASE_DB_PASSWORD:-supabase_password}@supabase-db:5432/${SUPABASE_DB_NAME:-swarm_supabase}?search_path=auth&sslmode=disable
+      GOTRUE_SITE_URL: ${SUPABASE_SITE_URL:-http://localhost:3004}
+      GOTRUE_URI_ALLOW_LIST: ${SUPABASE_ALLOWED_URLS:-*}
+      GOTRUE_DISABLE_SIGNUP: ${SUPABASE_DISABLE_SIGNUP:-false}
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: ${SUPABASE_JWT_EXPIRY:-3600}
+      GOTRUE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: true
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: false
+      GOTRUE_MAILER_AUTOCONFIRM: ${SUPABASE_MAILER_AUTOCONFIRM:-true}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-admin@swarm.local}
+      GOTRUE_MAILER_SUBJECTS_CONFIRMATION: "Confirm Your Swarm Account"
+      GOTRUE_MAILER_SUBJECTS_RECOVERY: "Reset Your Swarm Password"
+      GOTRUE_MAILER_SUBJECTS_MAGIC_LINK: "Your Swarm Magic Link"
+    ports:
+      - "${SUPABASE_AUTH_PORT:-9999}:9999"
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    networks:
+      - swarm-network
+
+  # Supabase REST API (PostgREST)
+  supabase-rest:
+    image: postgrest/postgrest:v12.0.1
+    container_name: swarm-supabase-rest
+    restart: unless-stopped
+    environment:
+      PGRST_DB_URI: postgres://${SUPABASE_DB_USER:-supabase}:${SUPABASE_DB_PASSWORD:-supabase_password}@supabase-db:5432/${SUPABASE_DB_NAME:-swarm_supabase}
+      PGRST_DB_SCHEMAS: ${SUPABASE_DB_SCHEMAS:-public}
+      PGRST_DB_ANON_ROLE: ${SUPABASE_DB_ANON_ROLE:-anon}
+      PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_SECRET: ${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      PGRST_APP_SETTINGS_JWT_EXP: ${SUPABASE_JWT_EXPIRY:-3600}
+    ports:
+      - "${SUPABASE_REST_PORT:-3000}:3000"
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    networks:
+      - swarm-network
+
+  # Supabase Realtime
+  supabase-realtime:
+    image: supabase/realtime:v2.25.50
+    container_name: swarm-supabase-realtime
+    restart: unless-stopped
+    environment:
+      PORT: 4000
+      DB_HOST: supabase-db
+      DB_PORT: 5432
+      DB_USER: ${SUPABASE_DB_USER:-supabase}
+      DB_PASSWORD: ${SUPABASE_DB_PASSWORD:-supabase_password}
+      DB_NAME: ${SUPABASE_DB_NAME:-swarm_supabase}
+      DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
+      DB_ENC_KEY: ${SUPABASE_DB_ENC_KEY:-supabaserealtime}
+      API_JWT_SECRET: ${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      FLY_ALLOC_ID: ${FLY_ALLOC_ID:-}
+      FLY_APP_NAME: ${FLY_APP_NAME:-}
+      SECRET_KEY_BASE: ${SUPABASE_SECRET_KEY_BASE:-UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq}
+      ERL_AFLAGS: -proto_dist inet_tcp
+      ENABLE_TAILSCALE: ${ENABLE_TAILSCALE:-false}
+      DNS_NODES: "''"
+    ports:
+      - "${SUPABASE_REALTIME_PORT:-4000}:4000"
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    networks:
+      - swarm-network
+
+  # Supabase Storage API
+  supabase-storage:
+    image: supabase/storage-api:v0.46.4
+    container_name: swarm-supabase-storage
+    restart: unless-stopped
+    environment:
+      ANON_KEY: ${SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
+      SERVICE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU}
+      POSTGREST_URL: http://supabase-rest:3000
+      PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      DATABASE_URL: postgres://${SUPABASE_DB_USER:-supabase}:${SUPABASE_DB_PASSWORD:-supabase_password}@supabase-db:5432/${SUPABASE_DB_NAME:-swarm_supabase}
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: stub
+      GLOBAL_S3_BUCKET: stub
+      ENABLE_IMAGE_TRANSFORMATION: "true"
+      IMGPROXY_URL: http://supabase-imgproxy:5001
+    volumes:
+      - supabase_storage_data:/var/lib/storage
+    ports:
+      - "${SUPABASE_STORAGE_PORT:-5000}:5000"
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+      supabase-rest:
+        condition: service_started
+    networks:
+      - swarm-network
+
+  # Image Proxy for Storage
+  supabase-imgproxy:
+    image: darthsim/imgproxy:v3.8.0
+    container_name: swarm-supabase-imgproxy
+    restart: unless-stopped
+    environment:
+      IMGPROXY_BIND: ":5001"
+      IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
+      IMGPROXY_USE_ETAG: "true"
+      IMGPROXY_ENABLE_WEBP_DETECTION: ${IMGPROXY_ENABLE_WEBP_DETECTION:-true}
+    volumes:
+      - supabase_storage_data:/var/lib/storage:ro
+    networks:
+      - swarm-network
+
+  # Supabase Meta API
+  supabase-meta:
+    image: supabase/postgres-meta:v0.68.0
+    container_name: swarm-supabase-meta
+    restart: unless-stopped
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: supabase-db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: ${SUPABASE_DB_NAME:-swarm_supabase}
+      PG_META_DB_USER: ${SUPABASE_DB_USER:-supabase}
+      PG_META_DB_PASSWORD: ${SUPABASE_DB_PASSWORD:-supabase_password}
+    ports:
+      - "${SUPABASE_META_PORT:-8080}:8080"
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    networks:
+      - swarm-network
+
+  # Supabase Studio (Dashboard)
+  supabase-studio:
+    image: supabase/studio:20240326-5e5586d
+    container_name: swarm-supabase-studio
+    restart: unless-stopped
+    environment:
+      STUDIO_PG_META_URL: http://supabase-meta:8080
+      POSTGRES_PASSWORD: ${SUPABASE_DB_PASSWORD:-supabase_password}
+      DEFAULT_ORGANIZATION_NAME: ${SUPABASE_DEFAULT_ORG:-Swarm Intelligence}
+      DEFAULT_PROJECT_NAME: ${SUPABASE_DEFAULT_PROJECT:-Swarm Dashboard}
+      SUPABASE_URL: http://localhost:${SUPABASE_KONG_PORT:-8000}
+      SUPABASE_REST_URL: http://localhost:${SUPABASE_REST_PORT:-3000}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU}
+      LOGFLARE_API_KEY: ${LOGFLARE_API_KEY:-}
+      LOGFLARE_URL: ${LOGFLARE_URL:-}
+      NEXT_PUBLIC_ENABLE_LOGS: true
+      NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
+    ports:
+      - "${SUPABASE_STUDIO_PORT:-3005}:3000"
+    depends_on:
+      supabase-meta:
+        condition: service_started
+    networks:
+      - swarm-network
+
+  # Kong API Gateway
+  supabase-kong:
+    image: kong:2.8-alpine
+    container_name: swarm-supabase-kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+    volumes:
+      - ./supabase/config/kong.yml:/var/lib/kong/kong.yml:ro
+    ports:
+      - "${SUPABASE_KONG_PORT:-8000}:8000/tcp"
+      - "${SUPABASE_KONG_HTTPS_PORT:-8443}:8443/tcp"
+    depends_on:
+      supabase-auth:
+        condition: service_started
+      supabase-rest:
+        condition: service_started
+      supabase-realtime:
+        condition: service_started
+      supabase-storage:
+        condition: service_started
+    networks:
+      - swarm-network
+
+volumes:
+  supabase_db_data:
+    driver: local
+  supabase_storage_data:
+    driver: local
+
+networks:
+  swarm-network:
+    external: true

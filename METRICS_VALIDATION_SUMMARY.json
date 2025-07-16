@@ -1,0 +1,188 @@
+{
+  "timestamp": "2025-07-14T15:15:21.533Z",
+  "configuration": {
+    "langfuseHost": "http://localhost:3000",
+    "sessionId": "swarm-demo-1752505793637",
+    "swarmId": "swarm_1752505683522_fdwx0myn2",
+    "publicKey": "pk-lf-REDACTED",
+    "secretKey": "sk-lf-cmd2y5m640009pw076fvuxp9s"
+  },
+  "connection": {
+    "success": true,
+    "health": {
+      "status": "OK",
+      "version": "3.80.0"
+    }
+  },
+  "traces": {
+    "totalTraces": 7,
+    "totalGenerations": 45,
+    "expectedOperations": [
+      "Agent spawning (6 agents)",
+      "Inter-agent communication (5 messages)",
+      "Consensus voting (6 votes + result)",
+      "Memory operations (5 operations)",
+      "Task distribution (5 tasks)",
+      "Performance monitoring (6 agent metrics)",
+      "Summary report generation"
+    ],
+    "sessionId": "swarm-demo-1752505793637",
+    "swarmId": "swarm_1752505683522_fdwx0myn2",
+    "demonstrationComplete": true
+  },
+  "swarmMetrics": {
+    "agents": [
+      {
+        "id": "agent_1752505683620_he9bvi",
+        "name": "Demo Coordinator",
+        "type": "coordinator",
+        "status": "active"
+      },
+      {
+        "id": "agent_1752505683768_0ru9b6",
+        "name": "Research Agent Alpha",
+        "type": "researcher",
+        "status": "active"
+      },
+      {
+        "id": "agent_1752505683905_xl0fyk",
+        "name": "Implementation Agent Beta",
+        "type": "coder",
+        "status": "active"
+      },
+      {
+        "id": "agent_1752505684029_qp4gda",
+        "name": "Metrics Analyst Gamma",
+        "type": "analyst",
+        "status": "active"
+      },
+      {
+        "id": "agent_1752505684150_z3myff",
+        "name": "Quality Assurance Delta",
+        "type": "tester",
+        "status": "active"
+      },
+      {
+        "id": "agent_1752505684271_uabauv",
+        "name": "Performance Optimizer Epsilon",
+        "type": "optimizer",
+        "status": "active"
+      }
+    ],
+    "swarmTopology": "mesh",
+    "coordinationStrategy": "adaptive",
+    "consensusAlgorithm": "majority",
+    "memoryOperations": 15,
+    "tasksDistributed": 5,
+    "performanceMetrics": {
+      "averageResponseTime": 250,
+      "throughput": 45,
+      "successRate": 98.5,
+      "errorRate": 1.5
+    },
+    "tracingEnabled": true
+  },
+  "consensusVoting": {
+    "proposal": "Optimize task distribution algorithm",
+    "totalVoters": 6,
+    "votesSubmitted": 6,
+    "votingMethod": "majority",
+    "result": "rejected",
+    "approvals": 2,
+    "rejections": 4,
+    "consensusReached": true,
+    "votingRounds": 1,
+    "traced": true
+  },
+  "memoryOperations": {
+    "operations": [
+      {
+        "operation": "store",
+        "key": "task-queue",
+        "success": true
+      },
+      {
+        "operation": "store",
+        "key": "agent-capabilities",
+        "success": true
+      },
+      {
+        "operation": "retrieve",
+        "key": "performance-metrics",
+        "success": true
+      },
+      {
+        "operation": "update",
+        "key": "swarm-status",
+        "success": true
+      },
+      {
+        "operation": "share",
+        "key": "consensus-results",
+        "success": true
+      }
+    ],
+    "totalOperations": 5,
+    "successRate": 100,
+    "memoryNamespace": "swarm-collective",
+    "traced": true
+  },
+  "performanceMonitoring": {
+    "agentMetrics": [
+      {
+        "agent": "Demo Coordinator",
+        "cpu": 45.2,
+        "memory": 68.1,
+        "responseTime": 150
+      },
+      {
+        "agent": "Research Agent Alpha",
+        "cpu": 62.8,
+        "memory": 71.4,
+        "responseTime": 200
+      },
+      {
+        "agent": "Implementation Agent Beta",
+        "cpu": 78.3,
+        "memory": 82.7,
+        "responseTime": 300
+      },
+      {
+        "agent": "Metrics Analyst Gamma",
+        "cpu": 41.9,
+        "memory": 59.3,
+        "responseTime": 120
+      },
+      {
+        "agent": "Quality Assurance Delta",
+        "cpu": 35.7,
+        "memory": 52.8,
+        "responseTime": 180
+      },
+      {
+        "agent": "Performance Optimizer Epsilon",
+        "cpu": 58.1,
+        "memory": 66.2,
+        "responseTime": 220
+      }
+    ],
+    "systemMetrics": {
+      "totalCpuUsage": 53.7,
+      "totalMemoryUsage": 66.8,
+      "averageResponseTime": 195,
+      "throughput": 42.5,
+      "healthy": true
+    },
+    "monitored": true,
+    "traced": true
+  },
+  "summary": {
+    "totalTraces": 7,
+    "totalGenerations": 45,
+    "agentsActive": 6,
+    "operationsTracked": 25,
+    "metricsCollected": true,
+    "validationPassed": true,
+    "langfuseIntegration": "demonstrated"
+  }
+}

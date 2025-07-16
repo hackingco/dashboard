@@ -2,12 +2,12 @@ name: Worker CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ dashboard, develop ]
     paths:
       - 'apps/worker/**'
       - '.github/workflows/worker-ci.yml'
   pull_request:
-    branches: [ main ]
+    branches: [ dashboard ]
     paths:
       - 'apps/worker/**'
 
@@ -58,7 +58,7 @@ jobs:
 
   build-docker:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dashboard'
     
     steps:
     - uses: actions/checkout@v3

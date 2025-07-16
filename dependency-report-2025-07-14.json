@@ -1,0 +1,432 @@
+{
+  "timestamp": "2025-07-14T15:42:47.433Z",
+  "overall": "degraded",
+  "summary": {
+    "total": 7,
+    "healthy": 0,
+    "unhealthy": 7,
+    "critical": 0
+  },
+  "services": {
+    "cf-langfuse-server": {
+      "overall": "critical",
+      "container": {
+        "status": "Up 22 minutes (unhealthy)",
+        "health": "unhealthy",
+        "isRunning": true,
+        "isHealthy": true
+      },
+      "dependencies": {
+        "cf-langfuse-db": {
+          "name": "cf-langfuse-db",
+          "type": "database",
+          "status": "healthy",
+          "responseTime": 286,
+          "error": null
+        },
+        "cf-clickhouse": {
+          "name": "cf-clickhouse",
+          "type": "database",
+          "status": "healthy",
+          "responseTime": 391,
+          "error": null
+        },
+        "redis": {
+          "name": "redis",
+          "type": "cache",
+          "status": "error",
+          "responseTime": 0,
+          "error": "Cache connection failed: Command failed: docker exec redis redis-cli ping\nError response from daemon: No such container: redis\n"
+        }
+      },
+      "ports": {
+        "3000": {
+          "available": true,
+          "status": "open"
+        }
+      },
+      "network": {
+        "swarm-langfuse-v3-working": {
+          "exists": false,
+          "status": "missing"
+        }
+      },
+      "volumes": {
+        "postgres_data": {
+          "exists": false,
+          "status": "error",
+          "error": "Command failed: docker volume inspect postgres_data\nError response from daemon: volume postgres_data not found\n"
+        },
+        "clickhouse_data": {
+          "exists": false,
+          "status": "error",
+          "error": "Command failed: docker volume inspect clickhouse_data\nError response from daemon: volume clickhouse_data not found\n"
+        }
+      },
+      "environment": {
+        "DATABASE_URL": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        },
+        "CLICKHOUSE_URL": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        },
+        "NEXTAUTH_SECRET": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        },
+        "SALT": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        }
+      },
+      "critical": false
+    },
+    "langfuse-worker-built": {
+      "overall": "degraded",
+      "container": {
+        "status": "Up 2 hours",
+        "health": "no-health-check",
+        "isRunning": true,
+        "isHealthy": true
+      },
+      "dependencies": {
+        "cf-langfuse-db": {
+          "name": "cf-langfuse-db",
+          "type": "database",
+          "status": "healthy",
+          "responseTime": 240,
+          "error": null
+        },
+        "cf-clickhouse": {
+          "name": "cf-clickhouse",
+          "type": "database",
+          "status": "healthy",
+          "responseTime": 271,
+          "error": null
+        },
+        "cf-analysis-redis": {
+          "name": "cf-analysis-redis",
+          "type": "cache",
+          "status": "healthy",
+          "responseTime": 134,
+          "error": null
+        }
+      },
+      "ports": {
+        "3030": {
+          "available": false,
+          "status": "closed"
+        }
+      },
+      "network": {
+        "swarm-langfuse-v3-working": {
+          "exists": false,
+          "status": "missing"
+        }
+      },
+      "volumes": {
+        "postgres_data": {
+          "exists": false,
+          "status": "error",
+          "error": "Command failed: docker volume inspect postgres_data\nError response from daemon: volume postgres_data not found\n"
+        },
+        "clickhouse_data": {
+          "exists": false,
+          "status": "error",
+          "error": "Command failed: docker volume inspect clickhouse_data\nError response from daemon: volume clickhouse_data not found\n"
+        }
+      },
+      "environment": {
+        "DATABASE_URL": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        },
+        "CLICKHOUSE_URL": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        },
+        "REDIS_URL": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        }
+      },
+      "critical": false
+    },
+    "cf-langfuse-db": {
+      "overall": "degraded",
+      "container": {
+        "status": "Up 4 hours (healthy)",
+        "health": "healthy",
+        "isRunning": true,
+        "isHealthy": true
+      },
+      "dependencies": {},
+      "ports": {
+        "5432": {
+          "available": false,
+          "status": "closed"
+        }
+      },
+      "network": {
+        "swarm-langfuse-v3-working": {
+          "exists": false,
+          "status": "missing"
+        }
+      },
+      "volumes": {
+        "postgres_data": {
+          "exists": false,
+          "status": "error",
+          "error": "Command failed: docker volume inspect postgres_data\nError response from daemon: volume postgres_data not found\n"
+        }
+      },
+      "environment": {
+        "POSTGRES_USER": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        },
+        "POSTGRES_PASSWORD": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        },
+        "POSTGRES_DB": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        }
+      },
+      "critical": false
+    },
+    "cf-clickhouse": {
+      "overall": "degraded",
+      "container": {
+        "status": "Up 6 hours (healthy)",
+        "health": "healthy",
+        "isRunning": true,
+        "isHealthy": true
+      },
+      "dependencies": {},
+      "ports": {
+        "8123": {
+          "available": true,
+          "status": "open"
+        },
+        "9000": {
+          "available": true,
+          "status": "open"
+        }
+      },
+      "network": {
+        "swarm-langfuse-v3-working": {
+          "exists": false,
+          "status": "missing"
+        }
+      },
+      "volumes": {
+        "clickhouse_data": {
+          "exists": false,
+          "status": "error",
+          "error": "Command failed: docker volume inspect clickhouse_data\nError response from daemon: volume clickhouse_data not found\n"
+        }
+      },
+      "environment": {
+        "CLICKHOUSE_DB": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        },
+        "CLICKHOUSE_USER": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        },
+        "CLICKHOUSE_PASSWORD": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        }
+      },
+      "critical": false
+    },
+    "cf-analysis-app": {
+      "overall": "critical",
+      "container": {
+        "status": "Up 4 hours (unhealthy)",
+        "health": "unhealthy",
+        "isRunning": true,
+        "isHealthy": true
+      },
+      "dependencies": {
+        "cf-analysis-postgres": {
+          "name": "cf-analysis-postgres",
+          "type": "database",
+          "status": "error",
+          "responseTime": 0,
+          "error": "Database connection failed: PostgreSQL check failed: Command failed: docker exec cf-analysis-postgres psql -U postgres -c \"SELECT 1;\"\npsql: error: connection to server on socket \"/var/run/postgresql/.s.PGSQL.5432\" failed: FATAL:  role \"postgres\" does not exist\n"
+        },
+        "cf-analysis-redis": {
+          "name": "cf-analysis-redis",
+          "type": "cache",
+          "status": "healthy",
+          "responseTime": 105,
+          "error": null
+        }
+      },
+      "ports": {
+        "3001": {
+          "available": true,
+          "status": "open"
+        }
+      },
+      "network": {
+        "swarm-network": {
+          "exists": false,
+          "status": "missing"
+        }
+      },
+      "volumes": {},
+      "environment": {},
+      "critical": false
+    },
+    "cf-analysis-postgres": {
+      "overall": "degraded",
+      "container": {
+        "status": "Up 6 hours",
+        "health": "no-health-check",
+        "isRunning": true,
+        "isHealthy": true
+      },
+      "dependencies": {},
+      "ports": {
+        "5433": {
+          "available": true,
+          "status": "open"
+        }
+      },
+      "network": {
+        "swarm-network": {
+          "exists": false,
+          "status": "missing"
+        }
+      },
+      "volumes": {
+        "postgres-data": {
+          "exists": false,
+          "status": "error",
+          "error": "Command failed: docker volume inspect postgres-data\nError response from daemon: volume postgres-data not found\n"
+        }
+      },
+      "environment": {
+        "POSTGRES_USER": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        },
+        "POSTGRES_PASSWORD": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        },
+        "POSTGRES_DB": {
+          "exists": true,
+          "value": "set",
+          "status": "healthy"
+        }
+      },
+      "critical": false
+    },
+    "cf-analysis-redis": {
+      "overall": "degraded",
+      "container": {
+        "status": "Up 6 hours",
+        "health": "no-health-check",
+        "isRunning": true,
+        "isHealthy": true
+      },
+      "dependencies": {},
+      "ports": {
+        "6380": {
+          "available": true,
+          "status": "open"
+        }
+      },
+      "network": {
+        "swarm-network": {
+          "exists": false,
+          "status": "missing"
+        }
+      },
+      "volumes": {
+        "redis-data": {
+          "exists": false,
+          "status": "error",
+          "error": "Command failed: docker volume inspect redis-data\nError response from daemon: volume redis-data not found\n"
+        }
+      },
+      "environment": {},
+      "critical": false
+    }
+  },
+  "networks": {
+    "swarm-network": {
+      "exists": false,
+      "status": "missing"
+    },
+    "swarm-langfuse-v3-working": {
+      "exists": false,
+      "status": "missing"
+    }
+  },
+  "volumes": {
+    "postgres_data": {
+      "exists": false,
+      "status": "error",
+      "error": "Command failed: docker volume inspect postgres_data\nError response from daemon: volume postgres_data not found\n"
+    },
+    "redis_data": {
+      "exists": false,
+      "status": "error",
+      "error": "Command failed: docker volume inspect redis_data\nError response from daemon: volume redis_data not found\n"
+    },
+    "clickhouse_data": {
+      "exists": false,
+      "status": "error",
+      "error": "Command failed: docker volume inspect clickhouse_data\nError response from daemon: volume clickhouse_data not found\n"
+    }
+  },
+  "recommendations": [
+    {
+      "priority": "high",
+      "category": "service",
+      "service": "cf-langfuse-server",
+      "message": "Service cf-langfuse-server is in critical state",
+      "actions": [
+        "Check container status",
+        "Verify dependencies",
+        "Review logs"
+      ]
+    },
+    {
+      "priority": "high",
+      "category": "service",
+      "service": "cf-analysis-app",
+      "message": "Service cf-analysis-app is in critical state",
+      "actions": [
+        "Check container status",
+        "Verify dependencies",
+        "Review logs"
+      ]
+    }
+  ]
+}

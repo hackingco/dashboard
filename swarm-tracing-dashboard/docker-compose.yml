@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Dashboard Backend
+  dashboard-backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: dashboard-backend
+    environment:
+      PORT: 3002
+      LANGFUSE_HOST: http://host.docker.internal:3000
+      LANGFUSE_PUBLIC_KEY: pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20
+      LANGFUSE_SECRET_KEY: sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60
+      COORDINATOR_URL: http://host.docker.internal:8000
+      NODE_ENV: production
+    ports:
+      - "3002:3002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - dashboard-network
+      - swarm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # Dashboard Frontend
+  dashboard-frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: dashboard-frontend
+    depends_on:
+      dashboard-backend:
+        condition: service_healthy
+    ports:
+      - "3004:80"
+    networks:
+      - dashboard-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+networks:
+  dashboard-network:
+    driver: bridge
+  swarm-network:
+    external: true
+    name: swarm03_swarm-network
+
+volumes:
+  dashboard_data:
+    driver: local

@@ -1,0 +1,617 @@
+{
+  "summary": {
+    "total": 13,
+    "passed": 8,
+    "failed": 5,
+    "successRate": "61.5%",
+    "timestamp": "2025-07-13T22:06:55.452Z"
+  },
+  "configuration": {
+    "langfuseUrl": "http://localhost:3000",
+    "dashboardUrl": "http://localhost:3001",
+    "websocketUrl": "ws://localhost:3002",
+    "publicKey": "pk-lf-REDACTED",
+    "secretKey": "sk-lf-021adb6b-de82-4f1b-864b-59aed4e2e13c",
+    "timeout": 30000
+  },
+  "results": [
+    {
+      "test": "Dashboard Health Check",
+      "passed": true,
+      "details": {
+        "status": "healthy",
+        "timestamp": "2025-07-13T22:06:55.399Z",
+        "swarmId": "swarm_1752405507302_3d1en3cv8",
+        "services": [
+          "langfuse",
+          "dashboard",
+          "websocket"
+        ],
+        "realTimeStreaming": true
+      },
+      "timestamp": "2025-07-13T22:06:55.401Z"
+    },
+    {
+      "test": "Langfuse Health Check",
+      "passed": true,
+      "details": {
+        "status": "OK",
+        "version": "2.95.9"
+      },
+      "timestamp": "2025-07-13T22:06:55.431Z"
+    },
+    {
+      "test": "Create Trace",
+      "passed": true,
+      "details": [
+        {
+          "id": "trace_dashboard_real_time_001",
+          "name": "Real-Time Dashboard Interaction",
+          "timestamp": "2025-07-13T21:30:16.391Z",
+          "sessionId": "session_hive_mind_2025",
+          "metadata": {
+            "swarmId": "swarm_1752405507302_3d1en3cv8",
+            "agentId": "queen-strategic",
+            "agentRole": "coordinator",
+            "operation": "dashboard_monitoring",
+            "realTime": true
+          },
+          "observations": [
+            {
+              "id": "obs_001_start",
+              "type": "span",
+              "name": "Dashboard Load",
+              "startTime": "2025-07-13T21:30:11.395Z",
+              "endTime": "2025-07-13T21:30:11.895Z",
+              "metadata": {
+                "component": "enhanced-live-dashboard",
+                "latency": 500
+              }
+            },
+            {
+              "id": "obs_001_websocket",
+              "type": "span",
+              "name": "WebSocket Connection",
+              "startTime": "2025-07-13T21:30:11.895Z",
+              "endTime": "2025-07-13T21:30:12.395Z",
+              "metadata": {
+                "port": 3002,
+                "streaming": true,
+                "latency": 500
+              }
+            },
+            {
+              "id": "obs_001_metrics",
+              "type": "span",
+              "name": "Metrics Aggregation",
+              "startTime": "2025-07-13T21:30:12.395Z",
+              "endTime": "2025-07-13T21:30:12.895Z",
+              "metadata": {
+                "metricsCollected": 25,
+                "compression": "75%",
+                "latency": 500
+              }
+            }
+          ],
+          "cost": {
+            "inputTokens": 1250,
+            "outputTokens": 850,
+            "totalCost": 0.034
+          },
+          "status": "completed"
+        },
+        {
+          "id": "trace_swarm_coordination_002",
+          "name": "Multi-Agent Swarm Coordination",
+          "timestamp": "2025-07-13T21:30:16.395Z",
+          "sessionId": "session_hive_mind_2025",
+          "metadata": {
+            "swarmId": "swarm_1752405507302_3d1en3cv8",
+            "agentCount": 8,
+            "operation": "parallel_task_execution",
+            "coordination": "hierarchical"
+          },
+          "observations": [
+            {
+              "id": "obs_002_init",
+              "type": "span",
+              "name": "Swarm Initialization",
+              "startTime": "2025-07-13T21:30:08.395Z",
+              "endTime": "2025-07-13T21:30:08.895Z",
+              "metadata": {
+                "topology": "hierarchical",
+                "agents": 8,
+                "latency": 500
+              }
+            },
+            {
+              "id": "obs_002_coord",
+              "type": "span",
+              "name": "Agent Coordination",
+              "startTime": "2025-07-13T21:30:08.895Z",
+              "endTime": "2025-07-13T21:30:10.395Z",
+              "metadata": {
+                "coordinations": 15,
+                "successRate": "98.7%",
+                "avgLatency": 125,
+                "crossAgentComms": 42
+              }
+            },
+            {
+              "id": "obs_002_complete",
+              "type": "span",
+              "name": "Task Completion",
+              "startTime": "2025-07-13T21:30:10.395Z",
+              "endTime": "2025-07-13T21:30:15.395Z",
+              "metadata": {
+                "tasksCompleted": 10,
+                "efficiency": "94.2%",
+                "totalTime": 5000
+              }
+            }
+          ],
+          "cost": {
+            "inputTokens": 3400,
+            "outputTokens": 2150,
+            "totalCost": 0.089
+          },
+          "status": "completed"
+        },
+        {
+          "id": "trace_performance_monitoring_003",
+          "name": "Real-Time Performance Monitoring",
+          "timestamp": "2025-07-13T21:30:16.395Z",
+          "sessionId": "session_hive_mind_2025",
+          "metadata": {
+            "swarmId": "swarm_1752405507302_3d1en3cv8",
+            "monitoringType": "real_time_streaming",
+            "dataPoints": 1000,
+            "compressionRatio": 0.25
+          },
+          "observations": [
+            {
+              "id": "obs_003_stream",
+              "type": "span",
+              "name": "Data Streaming",
+              "startTime": "2025-07-13T21:30:06.395Z",
+              "endTime": "2025-07-13T21:30:16.395Z",
+              "metadata": {
+                "streamed": "1000 events/sec",
+                "compression": "75% reduction",
+                "websocketConnections": 12,
+                "anomaliesDetected": 3
+              }
+            }
+          ],
+          "cost": {
+            "inputTokens": 8500,
+            "outputTokens": 1200,
+            "totalCost": 0.156
+          },
+          "status": "in_progress"
+        }
+      ],
+      "timestamp": "2025-07-13T22:06:55.434Z"
+    },
+    {
+      "test": "Create Span: Initialize",
+      "passed": true,
+      "details": {
+        "message": "Langfuse Integration Dashboard - PROOF OF CONCEPT",
+        "swarmId": "swarm_1752405507302_3d1en3cv8",
+        "realTimeTracing": true,
+        "evidence": "operational"
+      },
+      "timestamp": "2025-07-13T22:06:55.435Z"
+    },
+    {
+      "test": "Create Span: Process",
+      "passed": true,
+      "details": {
+        "message": "Langfuse Integration Dashboard - PROOF OF CONCEPT",
+        "swarmId": "swarm_1752405507302_3d1en3cv8",
+        "realTimeTracing": true,
+        "evidence": "operational"
+      },
+      "timestamp": "2025-07-13T22:06:55.436Z"
+    },
+    {
+      "test": "Create Span: Complete",
+      "passed": true,
+      "details": {
+        "message": "Langfuse Integration Dashboard - PROOF OF CONCEPT",
+        "swarmId": "swarm_1752405507302_3d1en3cv8",
+        "realTimeTracing": true,
+        "evidence": "operational"
+      },
+      "timestamp": "2025-07-13T22:06:55.437Z"
+    },
+    {
+      "test": "WebSocket Streaming",
+      "passed": false,
+      "details": "",
+      "timestamp": "2025-07-13T22:06:55.439Z"
+    },
+    {
+      "test": "Performance Metrics",
+      "passed": true,
+      "details": {
+        "avgLatency": 0.8,
+        "minLatency": 0,
+        "maxLatency": 1,
+        "samples": 10
+      },
+      "timestamp": "2025-07-13T22:06:55.447Z"
+    },
+    {
+      "test": "Swarm Coordination",
+      "passed": true,
+      "details": {
+        "swarmId": "swarm-test-d7a2f727-a052-4242-b558-968fa42a47a8",
+        "agents": 3,
+        "traces": [
+          "agent-0-trace-8352833c-dd4a-47a6-bd74-f099c6b7dd92",
+          "agent-1-trace-abb1b06e-d2b3-4f7d-9a19-60d224eec0ca",
+          "agent-2-trace-9438f053-6eb6-451c-981a-49a88b2ce023"
+        ]
+      },
+      "timestamp": "2025-07-13T22:06:55.449Z"
+    },
+    {
+      "test": "Error Handling: Invalid Trace ID",
+      "passed": false,
+      "details": "Expected error but succeeded",
+      "timestamp": "2025-07-13T22:06:55.450Z"
+    },
+    {
+      "test": "Error Handling: Missing Required Fields",
+      "passed": false,
+      "details": "Expected error but succeeded",
+      "timestamp": "2025-07-13T22:06:55.450Z"
+    },
+    {
+      "test": "Error Handling: Invalid Authentication",
+      "passed": false,
+      "details": "Expected error but succeeded",
+      "timestamp": "2025-07-13T22:06:55.451Z"
+    },
+    {
+      "test": "Data Persistence",
+      "passed": false,
+      "details": {
+        "message": "Langfuse Integration Dashboard - PROOF OF CONCEPT",
+        "swarmId": "swarm_1752405507302_3d1en3cv8",
+        "realTimeTracing": true,
+        "evidence": "operational"
+      },
+      "timestamp": "2025-07-13T22:06:55.452Z"
+    }
+  ],
+  "categories": {
+    "Dashboard Health Check": {
+      "passed": 1,
+      "failed": 0,
+      "tests": [
+        {
+          "test": "Dashboard Health Check",
+          "passed": true,
+          "details": {
+            "status": "healthy",
+            "timestamp": "2025-07-13T22:06:55.399Z",
+            "swarmId": "swarm_1752405507302_3d1en3cv8",
+            "services": [
+              "langfuse",
+              "dashboard",
+              "websocket"
+            ],
+            "realTimeStreaming": true
+          },
+          "timestamp": "2025-07-13T22:06:55.401Z"
+        }
+      ]
+    },
+    "Langfuse Health Check": {
+      "passed": 1,
+      "failed": 0,
+      "tests": [
+        {
+          "test": "Langfuse Health Check",
+          "passed": true,
+          "details": {
+            "status": "OK",
+            "version": "2.95.9"
+          },
+          "timestamp": "2025-07-13T22:06:55.431Z"
+        }
+      ]
+    },
+    "Create Trace": {
+      "passed": 1,
+      "failed": 0,
+      "tests": [
+        {
+          "test": "Create Trace",
+          "passed": true,
+          "details": [
+            {
+              "id": "trace_dashboard_real_time_001",
+              "name": "Real-Time Dashboard Interaction",
+              "timestamp": "2025-07-13T21:30:16.391Z",
+              "sessionId": "session_hive_mind_2025",
+              "metadata": {
+                "swarmId": "swarm_1752405507302_3d1en3cv8",
+                "agentId": "queen-strategic",
+                "agentRole": "coordinator",
+                "operation": "dashboard_monitoring",
+                "realTime": true
+              },
+              "observations": [
+                {
+                  "id": "obs_001_start",
+                  "type": "span",
+                  "name": "Dashboard Load",
+                  "startTime": "2025-07-13T21:30:11.395Z",
+                  "endTime": "2025-07-13T21:30:11.895Z",
+                  "metadata": {
+                    "component": "enhanced-live-dashboard",
+                    "latency": 500
+                  }
+                },
+                {
+                  "id": "obs_001_websocket",
+                  "type": "span",
+                  "name": "WebSocket Connection",
+                  "startTime": "2025-07-13T21:30:11.895Z",
+                  "endTime": "2025-07-13T21:30:12.395Z",
+                  "metadata": {
+                    "port": 3002,
+                    "streaming": true,
+                    "latency": 500
+                  }
+                },
+                {
+                  "id": "obs_001_metrics",
+                  "type": "span",
+                  "name": "Metrics Aggregation",
+                  "startTime": "2025-07-13T21:30:12.395Z",
+                  "endTime": "2025-07-13T21:30:12.895Z",
+                  "metadata": {
+                    "metricsCollected": 25,
+                    "compression": "75%",
+                    "latency": 500
+                  }
+                }
+              ],
+              "cost": {
+                "inputTokens": 1250,
+                "outputTokens": 850,
+                "totalCost": 0.034
+              },
+              "status": "completed"
+            },
+            {
+              "id": "trace_swarm_coordination_002",
+              "name": "Multi-Agent Swarm Coordination",
+              "timestamp": "2025-07-13T21:30:16.395Z",
+              "sessionId": "session_hive_mind_2025",
+              "metadata": {
+                "swarmId": "swarm_1752405507302_3d1en3cv8",
+                "agentCount": 8,
+                "operation": "parallel_task_execution",
+                "coordination": "hierarchical"
+              },
+              "observations": [
+                {
+                  "id": "obs_002_init",
+                  "type": "span",
+                  "name": "Swarm Initialization",
+                  "startTime": "2025-07-13T21:30:08.395Z",
+                  "endTime": "2025-07-13T21:30:08.895Z",
+                  "metadata": {
+                    "topology": "hierarchical",
+                    "agents": 8,
+                    "latency": 500
+                  }
+                },
+                {
+                  "id": "obs_002_coord",
+                  "type": "span",
+                  "name": "Agent Coordination",
+                  "startTime": "2025-07-13T21:30:08.895Z",
+                  "endTime": "2025-07-13T21:30:10.395Z",
+                  "metadata": {
+                    "coordinations": 15,
+                    "successRate": "98.7%",
+                    "avgLatency": 125,
+                    "crossAgentComms": 42
+                  }
+                },
+                {
+                  "id": "obs_002_complete",
+                  "type": "span",
+                  "name": "Task Completion",
+                  "startTime": "2025-07-13T21:30:10.395Z",
+                  "endTime": "2025-07-13T21:30:15.395Z",
+                  "metadata": {
+                    "tasksCompleted": 10,
+                    "efficiency": "94.2%",
+                    "totalTime": 5000
+                  }
+                }
+              ],
+              "cost": {
+                "inputTokens": 3400,
+                "outputTokens": 2150,
+                "totalCost": 0.089
+              },
+              "status": "completed"
+            },
+            {
+              "id": "trace_performance_monitoring_003",
+              "name": "Real-Time Performance Monitoring",
+              "timestamp": "2025-07-13T21:30:16.395Z",
+              "sessionId": "session_hive_mind_2025",
+              "metadata": {
+                "swarmId": "swarm_1752405507302_3d1en3cv8",
+                "monitoringType": "real_time_streaming",
+                "dataPoints": 1000,
+                "compressionRatio": 0.25
+              },
+              "observations": [
+                {
+                  "id": "obs_003_stream",
+                  "type": "span",
+                  "name": "Data Streaming",
+                  "startTime": "2025-07-13T21:30:06.395Z",
+                  "endTime": "2025-07-13T21:30:16.395Z",
+                  "metadata": {
+                    "streamed": "1000 events/sec",
+                    "compression": "75% reduction",
+                    "websocketConnections": 12,
+                    "anomaliesDetected": 3
+                  }
+                }
+              ],
+              "cost": {
+                "inputTokens": 8500,
+                "outputTokens": 1200,
+                "totalCost": 0.156
+              },
+              "status": "in_progress"
+            }
+          ],
+          "timestamp": "2025-07-13T22:06:55.434Z"
+        }
+      ]
+    },
+    "Create Span": {
+      "passed": 3,
+      "failed": 0,
+      "tests": [
+        {
+          "test": "Create Span: Initialize",
+          "passed": true,
+          "details": {
+            "message": "Langfuse Integration Dashboard - PROOF OF CONCEPT",
+            "swarmId": "swarm_1752405507302_3d1en3cv8",
+            "realTimeTracing": true,
+            "evidence": "operational"
+          },
+          "timestamp": "2025-07-13T22:06:55.435Z"
+        },
+        {
+          "test": "Create Span: Process",
+          "passed": true,
+          "details": {
+            "message": "Langfuse Integration Dashboard - PROOF OF CONCEPT",
+            "swarmId": "swarm_1752405507302_3d1en3cv8",
+            "realTimeTracing": true,
+            "evidence": "operational"
+          },
+          "timestamp": "2025-07-13T22:06:55.436Z"
+        },
+        {
+          "test": "Create Span: Complete",
+          "passed": true,
+          "details": {
+            "message": "Langfuse Integration Dashboard - PROOF OF CONCEPT",
+            "swarmId": "swarm_1752405507302_3d1en3cv8",
+            "realTimeTracing": true,
+            "evidence": "operational"
+          },
+          "timestamp": "2025-07-13T22:06:55.437Z"
+        }
+      ]
+    },
+    "WebSocket Streaming": {
+      "passed": 0,
+      "failed": 1,
+      "tests": [
+        {
+          "test": "WebSocket Streaming",
+          "passed": false,
+          "details": "",
+          "timestamp": "2025-07-13T22:06:55.439Z"
+        }
+      ]
+    },
+    "Performance Metrics": {
+      "passed": 1,
+      "failed": 0,
+      "tests": [
+        {
+          "test": "Performance Metrics",
+          "passed": true,
+          "details": {
+            "avgLatency": 0.8,
+            "minLatency": 0,
+            "maxLatency": 1,
+            "samples": 10
+          },
+          "timestamp": "2025-07-13T22:06:55.447Z"
+        }
+      ]
+    },
+    "Swarm Coordination": {
+      "passed": 1,
+      "failed": 0,
+      "tests": [
+        {
+          "test": "Swarm Coordination",
+          "passed": true,
+          "details": {
+            "swarmId": "swarm-test-d7a2f727-a052-4242-b558-968fa42a47a8",
+            "agents": 3,
+            "traces": [
+              "agent-0-trace-8352833c-dd4a-47a6-bd74-f099c6b7dd92",
+              "agent-1-trace-abb1b06e-d2b3-4f7d-9a19-60d224eec0ca",
+              "agent-2-trace-9438f053-6eb6-451c-981a-49a88b2ce023"
+            ]
+          },
+          "timestamp": "2025-07-13T22:06:55.449Z"
+        }
+      ]
+    },
+    "Error Handling": {
+      "passed": 0,
+      "failed": 3,
+      "tests": [
+        {
+          "test": "Error Handling: Invalid Trace ID",
+          "passed": false,
+          "details": "Expected error but succeeded",
+          "timestamp": "2025-07-13T22:06:55.450Z"
+        },
+        {
+          "test": "Error Handling: Missing Required Fields",
+          "passed": false,
+          "details": "Expected error but succeeded",
+          "timestamp": "2025-07-13T22:06:55.450Z"
+        },
+        {
+          "test": "Error Handling: Invalid Authentication",
+          "passed": false,
+          "details": "Expected error but succeeded",
+          "timestamp": "2025-07-13T22:06:55.451Z"
+        }
+      ]
+    },
+    "Data Persistence": {
+      "passed": 0,
+      "failed": 1,
+      "tests": [
+        {
+          "test": "Data Persistence",
+          "passed": false,
+          "details": {
+            "message": "Langfuse Integration Dashboard - PROOF OF CONCEPT",
+            "swarmId": "swarm_1752405507302_3d1en3cv8",
+            "realTimeTracing": true,
+            "evidence": "operational"
+          },
+          "timestamp": "2025-07-13T22:06:55.452Z"
+        }
+      ]
+    }
+  }
+}

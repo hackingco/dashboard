@@ -1,0 +1,78 @@
+# Hive Mind Docker Image - Swarm Coordination Service
+FROM node:18-alpine AS base
+
+# Install system dependencies
+RUN apk add --no-cache \
+    sqlite \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && rm -rf /var/cache/apk/*
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY apps/hive-mind/package*.json ./apps/hive-mind/
+COPY packages/shared/package*.json ./packages/shared/
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Development stage
+FROM base AS development
+
+# Install development dependencies
+RUN npm ci
+
+# Copy source code
+COPY apps/hive-mind ./apps/hive-mind
+COPY packages/shared ./packages/shared
+
+# Create necessary directories
+RUN mkdir -p /app/.hive-mind /app/.swarm
+
+# Set permissions
+RUN chmod 755 /app/.hive-mind /app/.swarm
+
+EXPOSE 8888
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8888/health || exit 1
+
+# Development command
+CMD ["npm", "run", "dev"]
+
+# Production stage
+FROM base AS production
+
+# Copy built application
+COPY apps/hive-mind/dist ./apps/hive-mind/dist
+COPY apps/hive-mind/config ./apps/hive-mind/config
+COPY packages/shared/dist ./packages/shared/dist
+
+# Create data directories
+RUN mkdir -p /app/.hive-mind /app/.swarm /app/logs
+
+# Set permissions
+RUN chmod 755 /app/.hive-mind /app/.swarm /app/logs
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S hive-mind -u 1001 -G nodejs
+
+# Change ownership
+RUN chown -R hive-mind:nodejs /app
+
+USER hive-mind
+
+EXPOSE 8888
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8888/health || exit 1
+
+# Production command
+CMD ["node", "apps/hive-mind/dist/index.js"]

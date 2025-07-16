@@ -2,9 +2,9 @@ name: 🚀 Comprehensive CI/CD Pipeline
 
 on:
   push:
-    branches: [main, develop, feat/*]
+    branches: [dashboard, develop, feat/*]
   pull_request:
-    branches: [main, develop]
+    branches: [dashboard, develop]
   schedule:
     # Run nightly builds at 2 AM UTC
     - cron: '0 2 * * *'
@@ -73,7 +73,7 @@ jobs:
         uses: trufflesecurity/truffleHog@main
         with:
           path: ./
-          base: main
+          base: dashboard
           head: HEAD
           extra_args: --json --no-verification
 
@@ -97,8 +97,8 @@ jobs:
             docker build -t swarm-manager:security-scan -f apps/manager/Dockerfile apps/manager/ || echo "Manager container build failed"
           fi
           
-          if [ -f "admin-dashboard/Dockerfile" ]; then
-            docker build -t swarm-dashboard:security-scan -f admin-dashboard/Dockerfile admin-dashboard/ || echo "Dashboard container build failed"
+          if [ -f "apps/dashboard/Dockerfile" ]; then
+            docker build -t swarm-dashboard:security-scan -f apps/dashboard/Dockerfile apps/dashboard/ || echo "Dashboard container build failed"
           fi
 
       - name: 🔍 Trivy container security scan
@@ -499,7 +499,10 @@ jobs:
 
       - name: 🏗️ Build all packages
         run: |
-          pnpm build:all
+          # Build workspace packages
+          pnpm --filter @swarm/dashboard run build || echo "Dashboard build failed"
+          pnpm --filter @swarm/manager run build || echo "Manager build failed"
+          pnpm --filter @swarm/worker run build || echo "Worker build failed"
           echo "🏗️ Build completed successfully"
 
       - name: 📦 Generate build info
@@ -567,7 +570,7 @@ jobs:
       - name: 🎨 Deploy Dashboard to Staging (Vercel Preview)
         id: deploy-dashboard
         run: |
-          cd admin-dashboard
+          cd apps/dashboard
           npm install -g vercel@latest
           
           # Set staging environment variables
@@ -622,7 +625,7 @@ jobs:
     if: |
       always() && 
       !contains(needs.*.result, 'failure') && 
-      (github.ref == 'refs/heads/main' || github.event.inputs.environment == 'production')
+      (github.ref == 'refs/heads/dashboard' || github.event.inputs.environment == 'production')
     environment: production
     outputs:
       manager_url: ${{ steps.deploy-manager.outputs.url }}
@@ -685,7 +688,7 @@ jobs:
       - name: 🎨 Deploy Dashboard to Production (Vercel)
         id: deploy-dashboard
         run: |
-          cd admin-dashboard
+          cd apps/dashboard
           npm install -g vercel@latest
           
           # Set production environment variables

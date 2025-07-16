@@ -1,0 +1,90 @@
+{
+  "name": "@swarm-orchestration/langfuse-wrapper",
+  "version": "1.0.0",
+  "description": "Advanced Langfuse integration with Claude Flow hooks, real-time monitoring, and swarm coordination",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE",
+    "docs",
+    "examples",
+    "monitoring"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build",
+    "test": "jest",
+    "test:unit": "jest tests/unit --passWithNoTests",
+    "test:integration": "jest tests/integration --passWithNoTests", 
+    "test:performance": "jest tests/performance --passWithNoTests",
+    "test:coverage": "jest --coverage --passWithNoTests",
+    "test:comprehensive": "node test-runner.js",
+    "test:docker": "docker-compose -f docker-compose.test.yml up --build",
+    "test:watch": "jest --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests --ext .ts",
+    "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts'",
+    "install:safe": "npm install --no-package-lock || npm install"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ruvnet/swarm-langfuse-wrapper.git"
+  },
+  "keywords": [
+    "langfuse",
+    "observability",
+    "tracing",
+    "swarm",
+    "orchestration",
+    "claude-flow",
+    "monitoring",
+    "analytics",
+    "real-time",
+    "hooks"
+  ],
+  "author": "rUv",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ruvnet/swarm-langfuse-wrapper/issues"
+  },
+  "homepage": "https://github.com/ruvnet/swarm-langfuse-wrapper#readme",
+  "dependencies": {
+    "langfuse": "^2.0.0",
+    "better-sqlite3": "^11.6.0",
+    "winston": "^3.11.0",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.0",
+    "chart.js": "^4.4.0",
+    "zlib": "^1.0.5"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.5.13",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.0.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@swarm-orchestration/types": "^1.0.0",
+    "@swarm-orchestration/config": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

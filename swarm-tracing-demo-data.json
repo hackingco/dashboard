@@ -1,0 +1,1784 @@
+{
+  "config": {
+    "swarmId": "demo_swarm_1752504491349",
+    "sessionId": "demo_session_1752504491349",
+    "baseUrl": "http://localhost:3000",
+    "publicKey": "pk-lf-demo-key",
+    "secretKey": "sk-lf-demo-secret"
+  },
+  "metrics": {
+    "totalTraces": 55,
+    "totalSpans": 0,
+    "totalAgents": 5,
+    "activeAgents": 3,
+    "totalTasks": 3,
+    "completedTasks": 4,
+    "consensusRounds": 1,
+    "memoryOperations": 7,
+    "errors": 7,
+    "startTime": 1752504491352
+  },
+  "traces": [
+    {
+      "id": "agent_spawn_coordinator-001_1752504491353",
+      "name": "🤖 Agent Spawned: Swarm Coordinator",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "agentId": "coordinator-001",
+        "agentName": "Swarm Coordinator",
+        "agentType": "coordinator",
+        "capabilities": [
+          "coordination",
+          "monitoring"
+        ]
+      },
+      "output": {
+        "status": "spawned",
+        "capabilities": [
+          "coordination",
+          "monitoring"
+        ]
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "coordinator-001",
+        "agentName": "Swarm Coordinator",
+        "agentType": "coordinator"
+      },
+      "tags": [
+        "agent",
+        "spawn",
+        "coordinator"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:11.353Z",
+      "spans": []
+    },
+    {
+      "id": "agent_spawn_researcher-001_1752504491655",
+      "name": "🤖 Agent Spawned: Research Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "researcher-001",
+      "input": {
+        "agentId": "researcher-001",
+        "agentName": "Research Agent",
+        "agentType": "researcher",
+        "capabilities": [
+          "web-search",
+          "analysis"
+        ]
+      },
+      "output": {
+        "status": "spawned",
+        "capabilities": [
+          "web-search",
+          "analysis"
+        ]
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "researcher-001",
+        "agentName": "Research Agent",
+        "agentType": "researcher"
+      },
+      "tags": [
+        "agent",
+        "spawn",
+        "researcher"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:11.655Z",
+      "spans": []
+    },
+    {
+      "id": "agent_spawn_coder-001_1752504491958",
+      "name": "🤖 Agent Spawned: Code Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coder-001",
+      "input": {
+        "agentId": "coder-001",
+        "agentName": "Code Agent",
+        "agentType": "coder",
+        "capabilities": [
+          "python",
+          "javascript"
+        ]
+      },
+      "output": {
+        "status": "spawned",
+        "capabilities": [
+          "python",
+          "javascript"
+        ]
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "coder-001",
+        "agentName": "Code Agent",
+        "agentType": "coder"
+      },
+      "tags": [
+        "agent",
+        "spawn",
+        "coder"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:11.958Z",
+      "spans": []
+    },
+    {
+      "id": "agent_spawn_analyst-001_1752504492261",
+      "name": "🤖 Agent Spawned: Data Analyst",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "analyst-001",
+      "input": {
+        "agentId": "analyst-001",
+        "agentName": "Data Analyst",
+        "agentType": "analyst",
+        "capabilities": [
+          "data-processing",
+          "visualization"
+        ]
+      },
+      "output": {
+        "status": "spawned",
+        "capabilities": [
+          "data-processing",
+          "visualization"
+        ]
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "analyst-001",
+        "agentName": "Data Analyst",
+        "agentType": "analyst"
+      },
+      "tags": [
+        "agent",
+        "spawn",
+        "analyst"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:12.261Z",
+      "spans": []
+    },
+    {
+      "id": "agent_spawn_tester-001_1752504492564",
+      "name": "🤖 Agent Spawned: Testing Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "tester-001",
+      "input": {
+        "agentId": "tester-001",
+        "agentName": "Testing Agent",
+        "agentType": "tester",
+        "capabilities": [
+          "unit-testing",
+          "integration-testing"
+        ]
+      },
+      "output": {
+        "status": "spawned",
+        "capabilities": [
+          "unit-testing",
+          "integration-testing"
+        ]
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "tester-001",
+        "agentName": "Testing Agent",
+        "agentType": "tester"
+      },
+      "tags": [
+        "agent",
+        "spawn",
+        "tester"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:12.564Z",
+      "spans": []
+    },
+    {
+      "id": "agent_activation_coordinator-001_1752504492866",
+      "name": "⚡ Agent Activated: Swarm Coordinator",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "agentId": "coordinator-001",
+        "taskId": "coord-task-001"
+      },
+      "output": {
+        "status": "activated",
+        "taskId": "coord-task-001"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "coordinator-001",
+        "taskId": "coord-task-001"
+      },
+      "tags": [
+        "agent",
+        "activation",
+        "coordinator"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:12.866Z",
+      "spans": []
+    },
+    {
+      "id": "agent_activation_researcher-001_1752504492968",
+      "name": "⚡ Agent Activated: Research Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "researcher-001",
+      "input": {
+        "agentId": "researcher-001",
+        "taskId": "research-task-001"
+      },
+      "output": {
+        "status": "activated",
+        "taskId": "research-task-001"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "researcher-001",
+        "taskId": "research-task-001"
+      },
+      "tags": [
+        "agent",
+        "activation",
+        "researcher"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:12.968Z",
+      "spans": []
+    },
+    {
+      "id": "agent_activation_coder-001_1752504493069",
+      "name": "⚡ Agent Activated: Code Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coder-001",
+      "input": {
+        "agentId": "coder-001",
+        "taskId": "code-task-001"
+      },
+      "output": {
+        "status": "activated",
+        "taskId": "code-task-001"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "coder-001",
+        "taskId": "code-task-001"
+      },
+      "tags": [
+        "agent",
+        "activation",
+        "coder"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:13.069Z",
+      "spans": []
+    },
+    {
+      "id": "agent_comm_coordinator-001_researcher-001_1752504493170",
+      "name": "📡 Agent Communication: Swarm Coordinator → Research Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "fromAgentId": "coordinator-001",
+        "toAgentId": "researcher-001",
+        "message": "Start research on performance optimization",
+        "messageType": "task-assignment"
+      },
+      "output": {
+        "status": "sent",
+        "messageDelivered": true
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "fromAgentId": "coordinator-001",
+        "toAgentId": "researcher-001",
+        "messageType": "task-assignment"
+      },
+      "tags": [
+        "agent",
+        "communication",
+        "task-assignment"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:13.170Z",
+      "spans": []
+    },
+    {
+      "id": "agent_comm_researcher-001_coordinator-001_1752504493272",
+      "name": "📡 Agent Communication: Research Agent → Swarm Coordinator",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "researcher-001",
+      "input": {
+        "fromAgentId": "researcher-001",
+        "toAgentId": "coordinator-001",
+        "message": "Research completed, findings available",
+        "messageType": "task-completion"
+      },
+      "output": {
+        "status": "sent",
+        "messageDelivered": true
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "fromAgentId": "researcher-001",
+        "toAgentId": "coordinator-001",
+        "messageType": "task-completion"
+      },
+      "tags": [
+        "agent",
+        "communication",
+        "task-completion"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:13.272Z",
+      "spans": []
+    },
+    {
+      "id": "agent_comm_coordinator-001_coder-001_1752504493373",
+      "name": "📡 Agent Communication: Swarm Coordinator → Code Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "fromAgentId": "coordinator-001",
+        "toAgentId": "coder-001",
+        "message": "Implement optimization based on research",
+        "messageType": "task-assignment"
+      },
+      "output": {
+        "status": "sent",
+        "messageDelivered": true
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "fromAgentId": "coordinator-001",
+        "toAgentId": "coder-001",
+        "messageType": "task-assignment"
+      },
+      "tags": [
+        "agent",
+        "communication",
+        "task-assignment"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:13.373Z",
+      "spans": []
+    },
+    {
+      "id": "agent_complete_researcher-001_1752504493475",
+      "name": "🏁 Agent Completed: Research Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "researcher-001",
+      "input": {
+        "agentId": "researcher-001",
+        "status": "completed"
+      },
+      "output": {
+        "status": "completed",
+        "totalTime": 1820
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "researcher-001",
+        "status": "completed"
+      },
+      "tags": [
+        "agent",
+        "complete",
+        "completed"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:13.475Z",
+      "spans": []
+    },
+    {
+      "id": "agent_complete_coder-001_1752504493576",
+      "name": "🏁 Agent Completed: Code Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coder-001",
+      "input": {
+        "agentId": "coder-001",
+        "status": "completed"
+      },
+      "output": {
+        "status": "completed",
+        "totalTime": 1618
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "coder-001",
+        "status": "completed"
+      },
+      "tags": [
+        "agent",
+        "complete",
+        "completed"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:13.576Z",
+      "spans": []
+    },
+    {
+      "id": "consensus_voting_vote-001_1752504493677",
+      "name": "🗳️ Consensus Voting: Task Priority Optimization",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "consensus-coordinator",
+      "input": {
+        "votingRoundId": "vote-001",
+        "topic": "Task Priority Optimization",
+        "participants": [
+          "coordinator-001",
+          "researcher-001",
+          "coder-001",
+          "analyst-001"
+        ],
+        "proposalData": {
+          "proposal": "Prioritize performance tasks over feature development",
+          "urgency": "high"
+        }
+      },
+      "output": {
+        "status": "voting_started",
+        "participantCount": 4
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "votingRoundId": "vote-001",
+        "topic": "Task Priority Optimization"
+      },
+      "tags": [
+        "consensus",
+        "voting",
+        "decision"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:13.677Z",
+      "spans": []
+    },
+    {
+      "id": "consensus_vote_vote-001_coordinator-001_1752504493779",
+      "name": "✋ Consensus Vote: Swarm Coordinator",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "votingRoundId": "vote-001",
+        "agentId": "coordinator-001",
+        "vote": "approve",
+        "reasoning": "Performance is critical for user experience"
+      },
+      "output": {
+        "status": "vote_recorded",
+        "vote": "approve",
+        "totalVotes": 1
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "votingRoundId": "vote-001",
+        "agentId": "coordinator-001",
+        "vote": "approve"
+      },
+      "tags": [
+        "consensus",
+        "vote",
+        "decision",
+        "approve"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:13.779Z",
+      "spans": []
+    },
+    {
+      "id": "consensus_vote_vote-001_researcher-001_1752504493880",
+      "name": "✋ Consensus Vote: Research Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "researcher-001",
+      "input": {
+        "votingRoundId": "vote-001",
+        "agentId": "researcher-001",
+        "vote": "approve",
+        "reasoning": "Research supports this decision"
+      },
+      "output": {
+        "status": "vote_recorded",
+        "vote": "approve",
+        "totalVotes": 2
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "votingRoundId": "vote-001",
+        "agentId": "researcher-001",
+        "vote": "approve"
+      },
+      "tags": [
+        "consensus",
+        "vote",
+        "decision",
+        "approve"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:13.880Z",
+      "spans": []
+    },
+    {
+      "id": "consensus_vote_vote-001_coder-001_1752504493981",
+      "name": "✋ Consensus Vote: Code Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coder-001",
+      "input": {
+        "votingRoundId": "vote-001",
+        "agentId": "coder-001",
+        "vote": "approve",
+        "reasoning": "Code optimization is needed"
+      },
+      "output": {
+        "status": "vote_recorded",
+        "vote": "approve",
+        "totalVotes": 3
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "votingRoundId": "vote-001",
+        "agentId": "coder-001",
+        "vote": "approve"
+      },
+      "tags": [
+        "consensus",
+        "vote",
+        "decision",
+        "approve"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:13.981Z",
+      "spans": []
+    },
+    {
+      "id": "consensus_vote_vote-001_analyst-001_1752504494082",
+      "name": "✋ Consensus Vote: Data Analyst",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "analyst-001",
+      "input": {
+        "votingRoundId": "vote-001",
+        "agentId": "analyst-001",
+        "vote": "approve",
+        "reasoning": "Data shows performance bottlenecks"
+      },
+      "output": {
+        "status": "vote_recorded",
+        "vote": "approve",
+        "totalVotes": 4
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "votingRoundId": "vote-001",
+        "agentId": "analyst-001",
+        "vote": "approve"
+      },
+      "tags": [
+        "consensus",
+        "vote",
+        "decision",
+        "approve"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:14.082Z",
+      "spans": []
+    },
+    {
+      "id": "consensus_result_vote-001_1752504494183",
+      "name": "📊 Consensus Result: Task Priority Optimization",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "consensus-coordinator",
+      "input": {
+        "votingRoundId": "vote-001",
+        "totalVotes": 4
+      },
+      "output": {
+        "result": "approved",
+        "outcome": "unanimous",
+        "statistics": {
+          "approveCount": 4,
+          "rejectCount": 0,
+          "abstainCount": 0,
+          "consensusReached": true
+        }
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "votingRoundId": "vote-001",
+        "result": "approved",
+        "outcome": "unanimous"
+      },
+      "tags": [
+        "consensus",
+        "result",
+        "unanimous"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:14.183Z",
+      "spans": []
+    },
+    {
+      "id": "memory_store_coordinator-001_1752504494285",
+      "name": "🧠 Memory STORE: swarm/config/priorities",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "operationType": "store",
+        "agentId": "coordinator-001",
+        "key": "swarm/config/priorities",
+        "value": {
+          "performance": "high",
+          "features": "medium",
+          "testing": "high"
+        },
+        "metadata": {}
+      },
+      "output": {
+        "status": "success",
+        "operationType": "store",
+        "key": "swarm/config/priorities"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "operationType": "store",
+        "agentId": "coordinator-001",
+        "key": "swarm/config/priorities"
+      },
+      "tags": [
+        "memory",
+        "store",
+        "storage"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:14.285Z",
+      "spans": []
+    },
+    {
+      "id": "memory_store_researcher-001_1752504494386",
+      "name": "🧠 Memory STORE: research/performance/findings",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "researcher-001",
+      "input": {
+        "operationType": "store",
+        "agentId": "researcher-001",
+        "key": "research/performance/findings",
+        "value": {
+          "bottlenecks": 3,
+          "optimizations": 8,
+          "impact": "high"
+        },
+        "metadata": {}
+      },
+      "output": {
+        "status": "success",
+        "operationType": "store",
+        "key": "research/performance/findings"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "operationType": "store",
+        "agentId": "researcher-001",
+        "key": "research/performance/findings"
+      },
+      "tags": [
+        "memory",
+        "store",
+        "storage"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:14.386Z",
+      "spans": []
+    },
+    {
+      "id": "memory_store_coder-001_1752504494486",
+      "name": "🧠 Memory STORE: code/optimizations/implemented",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coder-001",
+      "input": {
+        "operationType": "store",
+        "agentId": "coder-001",
+        "key": "code/optimizations/implemented",
+        "value": {
+          "functions": 12,
+          "performance_gain": "25%",
+          "tests_added": 8
+        },
+        "metadata": {}
+      },
+      "output": {
+        "status": "success",
+        "operationType": "store",
+        "key": "code/optimizations/implemented"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "operationType": "store",
+        "agentId": "coder-001",
+        "key": "code/optimizations/implemented"
+      },
+      "tags": [
+        "memory",
+        "store",
+        "storage"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:14.486Z",
+      "spans": []
+    },
+    {
+      "id": "memory_retrieve_analyst-001_1752504494588",
+      "name": "🧠 Memory RETRIEVE: research/performance/findings",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "analyst-001",
+      "input": {
+        "operationType": "retrieve",
+        "agentId": "analyst-001",
+        "key": "research/performance/findings",
+        "value": {
+          "bottlenecks": 3,
+          "optimizations": 8,
+          "impact": "high"
+        },
+        "metadata": {}
+      },
+      "output": {
+        "status": "success",
+        "operationType": "retrieve",
+        "key": "research/performance/findings"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "operationType": "retrieve",
+        "agentId": "analyst-001",
+        "key": "research/performance/findings"
+      },
+      "tags": [
+        "memory",
+        "retrieve",
+        "storage"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:14.588Z",
+      "spans": []
+    },
+    {
+      "id": "memory_retrieve_tester-001_1752504494689",
+      "name": "🧠 Memory RETRIEVE: code/optimizations/implemented",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "tester-001",
+      "input": {
+        "operationType": "retrieve",
+        "agentId": "tester-001",
+        "key": "code/optimizations/implemented",
+        "value": {
+          "functions": 12,
+          "performance_gain": "25%",
+          "tests_added": 8
+        },
+        "metadata": {}
+      },
+      "output": {
+        "status": "success",
+        "operationType": "retrieve",
+        "key": "code/optimizations/implemented"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "operationType": "retrieve",
+        "agentId": "tester-001",
+        "key": "code/optimizations/implemented"
+      },
+      "tags": [
+        "memory",
+        "retrieve",
+        "storage"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:14.689Z",
+      "spans": []
+    },
+    {
+      "id": "memory_update_coordinator-001_1752504494790",
+      "name": "🧠 Memory UPDATE: swarm/config/priorities",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "operationType": "update",
+        "agentId": "coordinator-001",
+        "key": "swarm/config/priorities",
+        "value": {
+          "performance": "completed",
+          "features": "high",
+          "testing": "in_progress"
+        },
+        "metadata": {}
+      },
+      "output": {
+        "status": "success",
+        "operationType": "update",
+        "key": "swarm/config/priorities"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "operationType": "update",
+        "agentId": "coordinator-001",
+        "key": "swarm/config/priorities"
+      },
+      "tags": [
+        "memory",
+        "update",
+        "storage"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:14.790Z",
+      "spans": []
+    },
+    {
+      "id": "memory_search_analyst-001_1752504494891",
+      "name": "🧠 Memory SEARCH: research/*/findings",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "analyst-001",
+      "input": {
+        "operationType": "search",
+        "agentId": "analyst-001",
+        "key": "research/*/findings",
+        "value": [
+          "research/performance/findings",
+          "research/user_experience/findings"
+        ],
+        "metadata": {}
+      },
+      "output": {
+        "status": "success",
+        "operationType": "search",
+        "key": "research/*/findings"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "operationType": "search",
+        "agentId": "analyst-001",
+        "key": "research/*/findings"
+      },
+      "tags": [
+        "memory",
+        "search",
+        "storage"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:14.891Z",
+      "spans": []
+    },
+    {
+      "id": "task_distribution_task-perf-001_1752504494993",
+      "name": "📋 Task Distribution: Optimize database queries",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "task-coordinator",
+      "input": {
+        "taskId": "task-perf-001",
+        "description": "Optimize database queries",
+        "assignedAgents": [
+          "coder-001",
+          "analyst-001"
+        ],
+        "priority": "high",
+        "metadata": {
+          "estimatedTime": 7200000,
+          "complexity": "high"
+        }
+      },
+      "output": {
+        "status": "distributed",
+        "agentCount": 2
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "taskId": "task-perf-001",
+        "description": "Optimize database queries",
+        "priority": "high"
+      },
+      "tags": [
+        "task",
+        "distribution",
+        "high"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:14.993Z",
+      "spans": []
+    },
+    {
+      "id": "task_distribution_task-test-001_1752504495094",
+      "name": "📋 Task Distribution: Add performance benchmarks",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "task-coordinator",
+      "input": {
+        "taskId": "task-test-001",
+        "description": "Add performance benchmarks",
+        "assignedAgents": [
+          "tester-001"
+        ],
+        "priority": "medium",
+        "metadata": {
+          "estimatedTime": 3600000,
+          "complexity": "medium"
+        }
+      },
+      "output": {
+        "status": "distributed",
+        "agentCount": 1
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "taskId": "task-test-001",
+        "description": "Add performance benchmarks",
+        "priority": "medium"
+      },
+      "tags": [
+        "task",
+        "distribution",
+        "medium"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:15.094Z",
+      "spans": []
+    },
+    {
+      "id": "task_distribution_task-monitor-001_1752504495196",
+      "name": "📋 Task Distribution: Setup monitoring dashboard",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "task-coordinator",
+      "input": {
+        "taskId": "task-monitor-001",
+        "description": "Setup monitoring dashboard",
+        "assignedAgents": [
+          "coordinator-001",
+          "analyst-001"
+        ],
+        "priority": "high",
+        "metadata": {
+          "estimatedTime": 5400000,
+          "complexity": "medium"
+        }
+      },
+      "output": {
+        "status": "distributed",
+        "agentCount": 2
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "taskId": "task-monitor-001",
+        "description": "Setup monitoring dashboard",
+        "priority": "high"
+      },
+      "tags": [
+        "task",
+        "distribution",
+        "high"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:15.196Z",
+      "spans": []
+    },
+    {
+      "id": "task_completion_task-perf-001_coder-001_1752504495295",
+      "name": "✅ Task Completion: Optimize database queries",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coder-001",
+      "input": {
+        "taskId": "task-perf-001",
+        "agentId": "coder-001",
+        "description": "Optimize database queries"
+      },
+      "output": {
+        "result": "Database query optimization completed - 40% performance improvement",
+        "success": true,
+        "completionData": {
+          "queriesOptimized": 15,
+          "performanceGain": "40%",
+          "testsAdded": 10
+        }
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "taskId": "task-perf-001",
+        "agentId": "coder-001",
+        "success": true
+      },
+      "tags": [
+        "task",
+        "completion",
+        "success"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:15.295Z",
+      "spans": []
+    },
+    {
+      "id": "task_completion_task-perf-001_analyst-001_1752504495396",
+      "name": "✅ Task Completion: Optimize database queries",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "analyst-001",
+      "input": {
+        "taskId": "task-perf-001",
+        "agentId": "analyst-001",
+        "description": "Optimize database queries"
+      },
+      "output": {
+        "result": "Performance analysis completed - identified 3 more optimization opportunities",
+        "success": true,
+        "completionData": {
+          "analysisCompleted": true,
+          "additionalOptimizations": 3,
+          "reportGenerated": true
+        }
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "taskId": "task-perf-001",
+        "agentId": "analyst-001",
+        "success": true
+      },
+      "tags": [
+        "task",
+        "completion",
+        "success"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:15.396Z",
+      "spans": []
+    },
+    {
+      "id": "task_completion_task-test-001_tester-001_1752504495497",
+      "name": "✅ Task Completion: Add performance benchmarks",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "tester-001",
+      "input": {
+        "taskId": "task-test-001",
+        "agentId": "tester-001",
+        "description": "Add performance benchmarks"
+      },
+      "output": {
+        "result": "Performance benchmark suite implemented with 25 test cases",
+        "success": true,
+        "completionData": {
+          "testCasesAdded": 25,
+          "benchmarkSuite": true,
+          "automatedReporting": true
+        }
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "taskId": "task-test-001",
+        "agentId": "tester-001",
+        "success": true
+      },
+      "tags": [
+        "task",
+        "completion",
+        "success"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:15.497Z",
+      "spans": []
+    },
+    {
+      "id": "task_completion_task-monitor-001_coordinator-001_1752504495598",
+      "name": "✅ Task Completion: Setup monitoring dashboard",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "taskId": "task-monitor-001",
+        "agentId": "coordinator-001",
+        "description": "Setup monitoring dashboard"
+      },
+      "output": {
+        "result": "Monitoring dashboard deployed with real-time metrics",
+        "success": true,
+        "completionData": {
+          "dashboardDeployed": true,
+          "realTimeMetrics": true,
+          "alertsConfigured": true
+        }
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "taskId": "task-monitor-001",
+        "agentId": "coordinator-001",
+        "success": true
+      },
+      "tags": [
+        "task",
+        "completion",
+        "success"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:15.598Z",
+      "spans": []
+    },
+    {
+      "id": "agent_comm_coordinator-001_researcher-001_1752504495700",
+      "name": "📡 Agent Communication: Swarm Coordinator → Research Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "fromAgentId": "coordinator-001",
+        "toAgentId": "researcher-001",
+        "message": "Research machine learning optimization techniques",
+        "messageType": "task-assignment"
+      },
+      "output": {
+        "status": "sent",
+        "messageDelivered": true
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "fromAgentId": "coordinator-001",
+        "toAgentId": "researcher-001",
+        "messageType": "task-assignment"
+      },
+      "tags": [
+        "agent",
+        "communication",
+        "task-assignment"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:15.700Z",
+      "spans": []
+    },
+    {
+      "id": "agent_comm_coordinator-001_coder-001_1752504495801",
+      "name": "📡 Agent Communication: Swarm Coordinator → Code Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "fromAgentId": "coordinator-001",
+        "toAgentId": "coder-001",
+        "message": "Implement ML-based query optimization",
+        "messageType": "task-assignment"
+      },
+      "output": {
+        "status": "sent",
+        "messageDelivered": true
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "fromAgentId": "coordinator-001",
+        "toAgentId": "coder-001",
+        "messageType": "task-assignment"
+      },
+      "tags": [
+        "agent",
+        "communication",
+        "task-assignment"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:15.801Z",
+      "spans": []
+    },
+    {
+      "id": "agent_comm_coder-001_researcher-001_1752504495902",
+      "name": "📡 Agent Communication: Code Agent → Research Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coder-001",
+      "input": {
+        "fromAgentId": "coder-001",
+        "toAgentId": "researcher-001",
+        "message": "Can you provide specifics on gradient descent optimization?",
+        "messageType": "information-request"
+      },
+      "output": {
+        "status": "sent",
+        "messageDelivered": true
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "fromAgentId": "coder-001",
+        "toAgentId": "researcher-001",
+        "messageType": "information-request"
+      },
+      "tags": [
+        "agent",
+        "communication",
+        "information-request"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:15.902Z",
+      "spans": []
+    },
+    {
+      "id": "agent_comm_researcher-001_coder-001_1752504496002",
+      "name": "📡 Agent Communication: Research Agent → Code Agent",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "researcher-001",
+      "input": {
+        "fromAgentId": "researcher-001",
+        "toAgentId": "coder-001",
+        "message": "Here are the gradient descent parameters: learning_rate=0.01, momentum=0.9",
+        "messageType": "information-response"
+      },
+      "output": {
+        "status": "sent",
+        "messageDelivered": true
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "fromAgentId": "researcher-001",
+        "toAgentId": "coder-001",
+        "messageType": "information-response"
+      },
+      "tags": [
+        "agent",
+        "communication",
+        "information-response"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:16.002Z",
+      "spans": []
+    },
+    {
+      "id": "agent_comm_coder-001_coordinator-001_1752504496104",
+      "name": "📡 Agent Communication: Code Agent → Swarm Coordinator",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coder-001",
+      "input": {
+        "fromAgentId": "coder-001",
+        "toAgentId": "coordinator-001",
+        "message": "ML optimization implementation 75% complete",
+        "messageType": "status-update"
+      },
+      "output": {
+        "status": "sent",
+        "messageDelivered": true
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "fromAgentId": "coder-001",
+        "toAgentId": "coordinator-001",
+        "messageType": "status-update"
+      },
+      "tags": [
+        "agent",
+        "communication",
+        "status-update"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:16.104Z",
+      "spans": []
+    },
+    {
+      "id": "agent_comm_tester-001_coordinator-001_1752504496205",
+      "name": "📡 Agent Communication: Testing Agent → Swarm Coordinator",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "tester-001",
+      "input": {
+        "fromAgentId": "tester-001",
+        "toAgentId": "coordinator-001",
+        "message": "All performance tests passing with 30% improvement",
+        "messageType": "status-update"
+      },
+      "output": {
+        "status": "sent",
+        "messageDelivered": true
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "fromAgentId": "tester-001",
+        "toAgentId": "coordinator-001",
+        "messageType": "status-update"
+      },
+      "tags": [
+        "agent",
+        "communication",
+        "status-update"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:16.205Z",
+      "spans": []
+    },
+    {
+      "id": "agent_comm_coordinator-001_all-agents_1752504496305",
+      "name": "📡 Agent Communication: Swarm Coordinator → all-agents",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "fromAgentId": "coordinator-001",
+        "toAgentId": "all-agents",
+        "message": "Daily standup: Share progress and blockers",
+        "messageType": "coordination"
+      },
+      "output": {
+        "status": "sent",
+        "messageDelivered": true
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "fromAgentId": "coordinator-001",
+        "toAgentId": "all-agents",
+        "messageType": "coordination"
+      },
+      "tags": [
+        "agent",
+        "communication",
+        "coordination"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:16.305Z",
+      "spans": []
+    },
+    {
+      "id": "performance_metrics_1752504496406",
+      "name": "📊 Performance Metrics: system-monitor",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "performance-monitor",
+      "input": {
+        "source": "system-monitor",
+        "metricsType": "performance"
+      },
+      "output": {
+        "cpuUsage": 35.2,
+        "memoryUsage": 62.8,
+        "diskUsage": 45.3,
+        "networkTraffic": 1450,
+        "swarmThroughput": 28.5,
+        "averageLatency": 156,
+        "errorRate": 0.02,
+        "activeConnections": 18
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "source": "system-monitor"
+      },
+      "tags": [
+        "performance",
+        "metrics",
+        "system-monitor"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:16.406Z",
+      "spans": []
+    },
+    {
+      "id": "performance_metrics_1752504496506",
+      "name": "📊 Performance Metrics: agent-monitor",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "performance-monitor",
+      "input": {
+        "source": "agent-monitor",
+        "metricsType": "performance"
+      },
+      "output": {
+        "agentUtilization": 78.5,
+        "taskCompletionRate": 92.3,
+        "consensusEfficiency": 96.7,
+        "memoryOperationsPerSecond": 15.2,
+        "communicationLatency": 45,
+        "coordinationEfficiency": 89.1
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "source": "agent-monitor"
+      },
+      "tags": [
+        "performance",
+        "metrics",
+        "agent-monitor"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:16.506Z",
+      "spans": []
+    },
+    {
+      "id": "performance_metrics_1752504496608",
+      "name": "📊 Performance Metrics: swarm-intelligence",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "performance-monitor",
+      "input": {
+        "source": "swarm-intelligence",
+        "metricsType": "performance"
+      },
+      "output": {
+        "collectiveIQ": 87.3,
+        "emergentBehaviors": 4,
+        "adaptationRate": 0.85,
+        "learningEfficiency": 76.2,
+        "decisionQuality": 91.8,
+        "selfHealingEvents": 2
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "source": "swarm-intelligence"
+      },
+      "tags": [
+        "performance",
+        "metrics",
+        "swarm-intelligence"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:16.608Z",
+      "spans": []
+    },
+    {
+      "id": "error_database_connection_1752504496708",
+      "name": "❌ Error: Database connection timeout",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coder-001",
+      "input": {
+        "context": "database_connection",
+        "errorMessage": "Database connection timeout",
+        "agentId": "coder-001"
+      },
+      "output": {
+        "errorType": "Error",
+        "errorMessage": "Database connection timeout"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "coder-001",
+        "context": "database_connection"
+      },
+      "tags": [
+        "error",
+        "database_connection",
+        "agent-error"
+      ],
+      "level": "ERROR",
+      "timestamp": "2025-07-14T14:48:16.708Z",
+      "spans": []
+    },
+    {
+      "id": "error_api_rate_limit_1752504496808",
+      "name": "❌ Error: API rate limit exceeded",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "researcher-001",
+      "input": {
+        "context": "api_rate_limit",
+        "errorMessage": "API rate limit exceeded",
+        "agentId": "researcher-001"
+      },
+      "output": {
+        "errorType": "Error",
+        "errorMessage": "API rate limit exceeded"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "researcher-001",
+        "context": "api_rate_limit"
+      },
+      "tags": [
+        "error",
+        "api_rate_limit",
+        "agent-error"
+      ],
+      "level": "ERROR",
+      "timestamp": "2025-07-14T14:48:16.808Z",
+      "spans": []
+    },
+    {
+      "id": "error_test_environment_1752504496910",
+      "name": "❌ Error: Test environment unavailable",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "tester-001",
+      "input": {
+        "context": "test_environment",
+        "errorMessage": "Test environment unavailable",
+        "agentId": "tester-001"
+      },
+      "output": {
+        "errorType": "Error",
+        "errorMessage": "Test environment unavailable"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "tester-001",
+        "context": "test_environment"
+      },
+      "tags": [
+        "error",
+        "test_environment",
+        "agent-error"
+      ],
+      "level": "ERROR",
+      "timestamp": "2025-07-14T14:48:16.910Z",
+      "spans": []
+    },
+    {
+      "id": "error_system_memory_1752504497011",
+      "name": "❌ Error: Memory allocation failed",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "system",
+      "input": {
+        "context": "system_memory",
+        "errorMessage": "Memory allocation failed",
+        "agentId": null
+      },
+      "output": {
+        "errorType": "Error",
+        "errorMessage": "Memory allocation failed"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": null,
+        "context": "system_memory"
+      },
+      "tags": [
+        "error",
+        "system_memory",
+        "system-error"
+      ],
+      "level": "ERROR",
+      "timestamp": "2025-07-14T14:48:17.011Z",
+      "spans": []
+    },
+    {
+      "id": "error_network_partition_1752504497111",
+      "name": "❌ Error: Network partition detected",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "system",
+      "input": {
+        "context": "network_partition",
+        "errorMessage": "Network partition detected",
+        "agentId": null
+      },
+      "output": {
+        "errorType": "Error",
+        "errorMessage": "Network partition detected"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": null,
+        "context": "network_partition"
+      },
+      "tags": [
+        "error",
+        "network_partition",
+        "system-error"
+      ],
+      "level": "ERROR",
+      "timestamp": "2025-07-14T14:48:17.111Z",
+      "spans": []
+    },
+    {
+      "id": "error_recovery_1752504497212",
+      "name": "❌ Error: Recovery: Database connection restored",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "context": "recovery",
+        "errorMessage": "Recovery: Database connection restored",
+        "agentId": "coordinator-001"
+      },
+      "output": {
+        "errorType": "Error",
+        "errorMessage": "Recovery: Database connection restored"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "coordinator-001",
+        "context": "recovery"
+      },
+      "tags": [
+        "error",
+        "recovery",
+        "agent-error"
+      ],
+      "level": "ERROR",
+      "timestamp": "2025-07-14T14:48:17.213Z",
+      "spans": []
+    },
+    {
+      "id": "error_recovery_1752504497313",
+      "name": "❌ Error: Recovery: Network partition healed",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "coordinator-001",
+      "input": {
+        "context": "recovery",
+        "errorMessage": "Recovery: Network partition healed",
+        "agentId": "coordinator-001"
+      },
+      "output": {
+        "errorType": "Error",
+        "errorMessage": "Recovery: Network partition healed"
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "agentId": "coordinator-001",
+        "context": "recovery"
+      },
+      "tags": [
+        "error",
+        "recovery",
+        "agent-error"
+      ],
+      "level": "ERROR",
+      "timestamp": "2025-07-14T14:48:17.313Z",
+      "spans": []
+    },
+    {
+      "id": "performance_metrics_1752504497413",
+      "name": "📊 Performance Metrics: real-time-update",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "performance-monitor",
+      "input": {
+        "source": "real-time-update",
+        "metricsType": "performance"
+      },
+      "output": {
+        "timestamp": "2025-07-14T14:48:17.413Z",
+        "activeAgents": 5,
+        "tasksInProgress": 8,
+        "completedTasks": 15,
+        "throughput": 25.5,
+        "systemHealth": 95,
+        "consensusRounds": 3,
+        "memoryOperations": 145
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "source": "real-time-update"
+      },
+      "tags": [
+        "performance",
+        "metrics",
+        "real-time-update"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:17.413Z",
+      "spans": []
+    },
+    {
+      "id": "performance_metrics_1752504498020",
+      "name": "📊 Performance Metrics: real-time-update",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "performance-monitor",
+      "input": {
+        "source": "real-time-update",
+        "metricsType": "performance"
+      },
+      "output": {
+        "timestamp": "2025-07-14T14:48:23.020Z",
+        "activeAgents": 4,
+        "tasksInProgress": 6,
+        "completedTasks": 18,
+        "throughput": 27.8,
+        "systemHealth": 92,
+        "consensusRounds": 4,
+        "memoryOperations": 157
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "source": "real-time-update"
+      },
+      "tags": [
+        "performance",
+        "metrics",
+        "real-time-update"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:18.020Z",
+      "spans": []
+    },
+    {
+      "id": "performance_metrics_1752504498622",
+      "name": "📊 Performance Metrics: real-time-update",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "performance-monitor",
+      "input": {
+        "source": "real-time-update",
+        "metricsType": "performance"
+      },
+      "output": {
+        "timestamp": "2025-07-14T14:48:28.622Z",
+        "activeAgents": 3,
+        "tasksInProgress": 4,
+        "completedTasks": 21,
+        "throughput": 30.1,
+        "systemHealth": 89,
+        "consensusRounds": 5,
+        "memoryOperations": 169
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "source": "real-time-update"
+      },
+      "tags": [
+        "performance",
+        "metrics",
+        "real-time-update"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:18.622Z",
+      "spans": []
+    },
+    {
+      "id": "performance_metrics_1752504499224",
+      "name": "📊 Performance Metrics: real-time-update",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "performance-monitor",
+      "input": {
+        "source": "real-time-update",
+        "metricsType": "performance"
+      },
+      "output": {
+        "timestamp": "2025-07-14T14:48:34.224Z",
+        "activeAgents": 2,
+        "tasksInProgress": 2,
+        "completedTasks": 24,
+        "throughput": 32.4,
+        "systemHealth": 86,
+        "consensusRounds": 6,
+        "memoryOperations": 181
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "source": "real-time-update"
+      },
+      "tags": [
+        "performance",
+        "metrics",
+        "real-time-update"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:19.224Z",
+      "spans": []
+    },
+    {
+      "id": "performance_metrics_1752504499826",
+      "name": "📊 Performance Metrics: real-time-update",
+      "sessionId": "demo_session_1752504491349",
+      "userId": "performance-monitor",
+      "input": {
+        "source": "real-time-update",
+        "metricsType": "performance"
+      },
+      "output": {
+        "timestamp": "2025-07-14T14:48:39.826Z",
+        "activeAgents": 1,
+        "tasksInProgress": 0,
+        "completedTasks": 27,
+        "throughput": 34.7,
+        "systemHealth": 83,
+        "consensusRounds": 7,
+        "memoryOperations": 193
+      },
+      "metadata": {
+        "swarmId": "demo_swarm_1752504491349",
+        "source": "real-time-update"
+      },
+      "tags": [
+        "performance",
+        "metrics",
+        "real-time-update"
+      ],
+      "level": "INFO",
+      "timestamp": "2025-07-14T14:48:19.826Z",
+      "spans": []
+    }
+  ],
+  "spans": [],
+  "generated": "2025-07-14T14:48:20.430Z"
+}

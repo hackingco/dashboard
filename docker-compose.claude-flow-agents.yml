@@ -1,0 +1,162 @@
+version: '3.8'
+
+services:
+  # Claude Flow Coordinator - Main orchestrator
+  claude-flow-coordinator:
+    build:
+      context: ./claude-flow
+      dockerfile: Dockerfile
+    container_name: cf-coordinator
+    environment:
+      - NODE_ENV=production
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=http://cf-langfuse-server:3000
+      - REDIS_URL=redis://cf-analysis-redis:6379
+      - AGENT_ROLE=coordinator
+      - ENABLE_TRACING=true
+      - TRACE_ALL_AGENTS=true
+    volumes:
+      - ./claude-flow:/app
+      - ./shared:/shared
+      - claude-flow-data:/app/data
+      - claude-flow-logs:/app/logs
+    networks:
+      - claude-flow-network
+    depends_on:
+      - cf-langfuse-server
+      - cf-analysis-redis
+    command: ["node", "src/agents/coordinator.js"]
+
+  # Claude Flow Agent Pool
+  claude-flow-agent-1:
+    build:
+      context: ./claude-flow
+      dockerfile: Dockerfile
+    container_name: cf-agent-1
+    environment:
+      - NODE_ENV=production
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=http://cf-langfuse-server:3000
+      - REDIS_URL=redis://cf-analysis-redis:6379
+      - AGENT_ID=agent-1
+      - AGENT_TYPE=researcher
+      - ENABLE_TRACING=true
+    volumes:
+      - ./claude-flow:/app
+      - ./shared:/shared
+      - claude-flow-data:/app/data
+    networks:
+      - claude-flow-network
+    depends_on:
+      - claude-flow-coordinator
+    command: ["node", "src/agents/worker.js"]
+
+  claude-flow-agent-2:
+    build:
+      context: ./claude-flow
+      dockerfile: Dockerfile
+    container_name: cf-agent-2
+    environment:
+      - NODE_ENV=production
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=http://cf-langfuse-server:3000
+      - REDIS_URL=redis://cf-analysis-redis:6379
+      - AGENT_ID=agent-2
+      - AGENT_TYPE=coder
+      - ENABLE_TRACING=true
+    volumes:
+      - ./claude-flow:/app
+      - ./shared:/shared
+      - claude-flow-data:/app/data
+    networks:
+      - claude-flow-network
+    depends_on:
+      - claude-flow-coordinator
+    command: ["node", "src/agents/worker.js"]
+
+  claude-flow-agent-3:
+    build:
+      context: ./claude-flow
+      dockerfile: Dockerfile
+    container_name: cf-agent-3
+    environment:
+      - NODE_ENV=production
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=http://cf-langfuse-server:3000
+      - REDIS_URL=redis://cf-analysis-redis:6379
+      - AGENT_ID=agent-3
+      - AGENT_TYPE=analyst
+      - ENABLE_TRACING=true
+    volumes:
+      - ./claude-flow:/app
+      - ./shared:/shared
+      - claude-flow-data:/app/data
+    networks:
+      - claude-flow-network
+    depends_on:
+      - claude-flow-coordinator
+    command: ["node", "src/agents/worker.js"]
+
+  claude-flow-agent-4:
+    build:
+      context: ./claude-flow
+      dockerfile: Dockerfile
+    container_name: cf-agent-4
+    environment:
+      - NODE_ENV=production
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=http://cf-langfuse-server:3000
+      - REDIS_URL=redis://cf-analysis-redis:6379
+      - AGENT_ID=agent-4
+      - AGENT_TYPE=tester
+      - ENABLE_TRACING=true
+    volumes:
+      - ./claude-flow:/app
+      - ./shared:/shared
+      - claude-flow-data:/app/data
+    networks:
+      - claude-flow-network
+    depends_on:
+      - claude-flow-coordinator
+    command: ["node", "src/agents/worker.js"]
+
+  # Claude Flow CLI Interface
+  claude-flow-cli:
+    build:
+      context: ./claude-flow
+      dockerfile: Dockerfile
+    container_name: cf-cli
+    environment:
+      - NODE_ENV=production
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=http://cf-langfuse-server:3000
+      - REDIS_URL=redis://cf-analysis-redis:6379
+      - COORDINATOR_URL=http://claude-flow-coordinator:8080
+      - ENABLE_TRACING=true
+    volumes:
+      - ./claude-flow:/app
+      - ./shared:/shared
+      - claude-flow-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - claude-flow-network
+    depends_on:
+      - claude-flow-coordinator
+    stdin_open: true
+    tty: true
+    command: ["node", "src/cli.js"]
+
+networks:
+  claude-flow-network:
+    external: true
+    name: swarm03_default
+
+volumes:
+  claude-flow-data:
+  claude-flow-logs:

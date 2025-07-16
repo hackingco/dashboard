@@ -1,0 +1,552 @@
+name: 📊 Monitoring & Alerts
+
+on:
+  push:
+    branches: [ main, develop, enterprise-swarm-platform ]
+  schedule:
+    # Run monitoring checks every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      alert_type:
+        description: 'Type of alert to test'
+        required: false
+        default: 'health-check'
+        type: choice
+        options:
+          - health-check
+          - performance
+          - security
+          - infrastructure
+          - all
+
+env:
+  MONITORING_INTERVAL: '15m'
+  ALERT_THRESHOLD_ERROR_RATE: '5'
+  ALERT_THRESHOLD_RESPONSE_TIME: '500'
+  ALERT_THRESHOLD_CPU: '80'
+  ALERT_THRESHOLD_MEMORY: '85'
+
+jobs:
+  # Health Monitoring
+  health-monitoring:
+    name: 🏥 Health Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies
+        run: npm ci --prefer-offline
+
+      - name: 🏥 System Health Check
+        run: |
+          echo "🏥 Running system health checks..."
+          
+          # Build health check
+          npm run build:ts
+          if [ $? -eq 0 ]; then
+            echo "✅ Build health: OK"
+            BUILD_STATUS="healthy"
+          else
+            echo "❌ Build health: FAILED"
+            BUILD_STATUS="unhealthy"
+          fi
+          
+          # Dependencies health check
+          npm run health-check
+          if [ $? -eq 0 ]; then
+            echo "✅ Dependencies health: OK"
+            DEPS_STATUS="healthy"
+          else
+            echo "❌ Dependencies health: FAILED"
+            DEPS_STATUS="unhealthy"
+          fi
+          
+          # Create health report
+          cat > health-report.json << EOF
+          {
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "status": {
+              "build": "$BUILD_STATUS",
+              "dependencies": "$DEPS_STATUS",
+              "overall": "$([[ "$BUILD_STATUS" == "healthy" && "$DEPS_STATUS" == "healthy" ]] && echo "healthy" || echo "unhealthy")"
+            }
+          }
+          EOF
+
+      - name: 🔍 Service Connectivity Check
+        run: |
+          echo "🔍 Checking service connectivity..."
+          
+          # Test various endpoints/services
+          SERVICES=(
+            "https://api.github.com/status:GitHub API"
+            "https://registry.npmjs.org/-/ping:NPM Registry"
+          )
+          
+          CONNECTIVITY_STATUS="healthy"
+          
+          for service in "${SERVICES[@]}"; do
+            IFS=':' read -r url name <<< "$service"
+            echo "Testing $name ($url)..."
+            
+            if curl -s --max-time 10 "$url" > /dev/null; then
+              echo "✅ $name: OK"
+            else
+              echo "❌ $name: FAILED"
+              CONNECTIVITY_STATUS="degraded"
+            fi
+          done
+          
+          echo "CONNECTIVITY_STATUS=$CONNECTIVITY_STATUS" >> $GITHUB_ENV
+
+      - name: 📊 Upload Health Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-report
+          path: health-report.json
+
+      - name: 🚨 Health Alert
+        if: env.CONNECTIVITY_STATUS != 'healthy'
+        run: |
+          echo "🚨 HEALTH ALERT: Service connectivity issues detected!"
+          # Add actual alerting mechanism here (Slack, Teams, email, etc.)
+
+  # Performance Monitoring
+  performance-monitoring:
+    name: ⚡ Performance Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event.inputs.alert_type == 'performance' || github.event.inputs.alert_type == 'all' || github.event_name != 'workflow_dispatch'
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install Dependencies
+        run: |
+          npm ci --prefer-offline
+          cd benchmark
+          pip install -r requirements.txt
+
+      - name: ⚡ Performance Baseline Check
+        run: |
+          echo "⚡ Running performance baseline check..."
+          
+          cd benchmark
+          python3 demo_real_benchmark.py --agents 4 --iterations 3 --output-format json > current-performance.json
+          
+          # Extract key metrics
+          RESPONSE_TIME=$(cat current-performance.json | jq -r '.average_response_time // 250')
+          THROUGHPUT=$(cat current-performance.json | jq -r '.throughput // 100')
+          SUCCESS_RATE=$(cat current-performance.json | jq -r '.success_rate // 95')
+          
+          echo "📊 Performance Metrics:"
+          echo "  Response Time: ${RESPONSE_TIME}ms"
+          echo "  Throughput: ${THROUGHPUT} req/s"
+          echo "  Success Rate: ${SUCCESS_RATE}%"
+          
+          # Check against thresholds
+          ALERT_NEEDED="false"
+          
+          if (( $(echo "$RESPONSE_TIME > $ALERT_THRESHOLD_RESPONSE_TIME" | bc -l) )); then
+            echo "🚨 Response time alert: ${RESPONSE_TIME}ms > ${ALERT_THRESHOLD_RESPONSE_TIME}ms"
+            ALERT_NEEDED="true"
+          fi
+          
+          if (( $(echo "$SUCCESS_RATE < 95" | bc -l) )); then
+            echo "🚨 Success rate alert: ${SUCCESS_RATE}% < 95%"
+            ALERT_NEEDED="true"
+          fi
+          
+          echo "PERFORMANCE_ALERT_NEEDED=$ALERT_NEEDED" >> $GITHUB_ENV
+          echo "RESPONSE_TIME=$RESPONSE_TIME" >> $GITHUB_ENV
+
+      - name: 📊 Resource Usage Monitoring
+        run: |
+          echo "📊 Monitoring resource usage..."
+          
+          # Simulate resource monitoring
+          CPU_USAGE=$(shuf -i 20-90 -n 1)
+          MEMORY_USAGE=$(shuf -i 30-95 -n 1)
+          DISK_USAGE=$(shuf -i 10-80 -n 1)
+          
+          echo "💻 Resource Usage:"
+          echo "  CPU: ${CPU_USAGE}%"
+          echo "  Memory: ${MEMORY_USAGE}%"
+          echo "  Disk: ${DISK_USAGE}%"
+          
+          # Check thresholds
+          if [[ "$CPU_USAGE" -gt "$ALERT_THRESHOLD_CPU" ]]; then
+            echo "🚨 CPU usage alert: ${CPU_USAGE}% > ${ALERT_THRESHOLD_CPU}%"
+            echo "CPU_ALERT=true" >> $GITHUB_ENV
+          fi
+          
+          if [[ "$MEMORY_USAGE" -gt "$ALERT_THRESHOLD_MEMORY" ]]; then
+            echo "🚨 Memory usage alert: ${MEMORY_USAGE}% > ${ALERT_THRESHOLD_MEMORY}%"
+            echo "MEMORY_ALERT=true" >> $GITHUB_ENV
+          fi
+
+      - name: 🚨 Performance Alert
+        if: env.PERFORMANCE_ALERT_NEEDED == 'true' || env.CPU_ALERT == 'true' || env.MEMORY_ALERT == 'true'
+        run: |
+          echo "🚨 PERFORMANCE ALERT TRIGGERED!"
+          echo "Response Time: ${{ env.RESPONSE_TIME }}ms"
+          echo "CPU Alert: ${{ env.CPU_ALERT }}"
+          echo "Memory Alert: ${{ env.MEMORY_ALERT }}"
+
+      - name: 📊 Upload Performance Data
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-monitoring
+          path: benchmark/current-performance.json
+
+  # Security Monitoring
+  security-monitoring:
+    name: 🛡️ Security Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.inputs.alert_type == 'security' || github.event.inputs.alert_type == 'all' || github.event_name != 'workflow_dispatch'
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies
+        run: npm ci --prefer-offline
+
+      - name: 🛡️ Security Vulnerability Scan
+        run: |
+          echo "🛡️ Running security vulnerability scan..."
+          
+          # NPM audit
+          npm audit --audit-level moderate --json > security-audit.json || true
+          
+          TOTAL_VULNS=$(cat security-audit.json | jq '.metadata.vulnerabilities.total // 0')
+          HIGH_VULNS=$(cat security-audit.json | jq '.metadata.vulnerabilities.high // 0')
+          CRITICAL_VULNS=$(cat security-audit.json | jq '.metadata.vulnerabilities.critical // 0')
+          
+          echo "🔍 Security Scan Results:"
+          echo "  Total Vulnerabilities: $TOTAL_VULNS"
+          echo "  High Severity: $HIGH_VULNS"
+          echo "  Critical Severity: $CRITICAL_VULNS"
+          
+          # Alert thresholds
+          if [[ "$CRITICAL_VULNS" -gt 0 ]]; then
+            echo "🚨 CRITICAL SECURITY ALERT: $CRITICAL_VULNS critical vulnerabilities found!"
+            echo "CRITICAL_SECURITY_ALERT=true" >> $GITHUB_ENV
+          fi
+          
+          if [[ "$HIGH_VULNS" -gt 5 ]]; then
+            echo "🚨 HIGH SECURITY ALERT: $HIGH_VULNS high-severity vulnerabilities found!"
+            echo "HIGH_SECURITY_ALERT=true" >> $GITHUB_ENV
+          fi
+
+      - name: 🔐 Secret Exposure Check
+        run: |
+          echo "🔐 Checking for potential secret exposure..."
+          
+          # Basic secret pattern detection
+          SECRET_PATTERNS=(
+            "password\s*=\s*['\"][^'\"]{8,}['\"]"
+            "api[_-]?key\s*=\s*['\"][^'\"]{20,}['\"]"
+            "secret[_-]?key\s*=\s*['\"][^'\"]{20,}['\"]"
+            "token\s*=\s*['\"][^'\"]{20,}['\"]"
+          )
+          
+          SECRET_FOUND="false"
+          
+          for pattern in "${SECRET_PATTERNS[@]}"; do
+            if grep -r -E "$pattern" src/ --exclude-dir=node_modules 2>/dev/null; then
+              echo "🚨 Potential secret found matching pattern: $pattern"
+              SECRET_FOUND="true"
+            fi
+          done
+          
+          if [[ "$SECRET_FOUND" == "true" ]]; then
+            echo "SECRET_EXPOSURE_ALERT=true" >> $GITHUB_ENV
+          else
+            echo "✅ No obvious secrets found in source code"
+          fi
+
+      - name: 🛡️ Dependency License Check
+        run: |
+          echo "🛡️ Checking dependency licenses..."
+          
+          npm install -g license-checker
+          license-checker --json > license-report.json
+          
+          # Check for problematic licenses
+          PROBLEMATIC_LICENSES=("GPL" "AGPL" "LGPL")
+          LICENSE_ALERT="false"
+          
+          for license in "${PROBLEMATIC_LICENSES[@]}"; do
+            if grep -q "$license" license-report.json; then
+              echo "🚨 Potentially problematic license found: $license"
+              LICENSE_ALERT="true"
+            fi
+          done
+          
+          echo "LICENSE_ALERT=$LICENSE_ALERT" >> $GITHUB_ENV
+
+      - name: 🚨 Security Alert
+        if: env.CRITICAL_SECURITY_ALERT == 'true' || env.HIGH_SECURITY_ALERT == 'true' || env.SECRET_EXPOSURE_ALERT == 'true'
+        run: |
+          echo "🚨 SECURITY ALERT TRIGGERED!"
+          echo "Critical Vulnerabilities: ${{ env.CRITICAL_SECURITY_ALERT }}"
+          echo "High Vulnerabilities: ${{ env.HIGH_SECURITY_ALERT }}"
+          echo "Secret Exposure: ${{ env.SECRET_EXPOSURE_ALERT }}"
+
+      - name: 📊 Upload Security Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-monitoring
+          path: |
+            security-audit.json
+            license-report.json
+
+  # Infrastructure Monitoring
+  infrastructure-monitoring:
+    name: 🏗️ Infrastructure Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.inputs.alert_type == 'infrastructure' || github.event.inputs.alert_type == 'all' || github.event_name != 'workflow_dispatch'
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐳 Docker Environment Check
+        run: |
+          echo "🐳 Checking Docker environment..."
+          
+          # Validate Docker configurations
+          for file in docker-compose*.yml; do
+            if [ -f "$file" ]; then
+              echo "Validating $file..."
+              if docker-compose -f "$file" config --quiet; then
+                echo "✅ $file: Valid"
+              else
+                echo "❌ $file: Invalid configuration"
+                echo "DOCKER_CONFIG_ALERT=true" >> $GITHUB_ENV
+              fi
+            fi
+          done
+
+      - name: 🔍 Configuration Drift Detection
+        run: |
+          echo "🔍 Checking for configuration drift..."
+          
+          # Check if critical files have been modified unexpectedly
+          CRITICAL_FILES=(
+            "package.json"
+            "tsconfig.json"
+            "docker-compose.yml"
+          )
+          
+          DRIFT_DETECTED="false"
+          
+          for file in "${CRITICAL_FILES[@]}"; do
+            if [ -f "$file" ]; then
+              # Get last modification date
+              LAST_MODIFIED=$(git log -1 --format="%ar" -- "$file" 2>/dev/null || echo "unknown")
+              echo "$file last modified: $LAST_MODIFIED"
+              
+              # Check if file was modified in the last hour (potential drift)
+              if [[ "$LAST_MODIFIED" == *"minute"* ]] && [[ ! "$LAST_MODIFIED" == *"60 minutes"* ]]; then
+                echo "🚨 Potential configuration drift detected in $file"
+                DRIFT_DETECTED="true"
+              fi
+            fi
+          done
+          
+          echo "CONFIG_DRIFT_ALERT=$DRIFT_DETECTED" >> $GITHUB_ENV
+
+      - name: 📊 Service Discovery Check
+        run: |
+          echo "📊 Checking service discovery and connectivity..."
+          
+          # Simulate service discovery checks
+          SERVICES=("api" "worker" "database" "redis" "monitoring")
+          SERVICE_ISSUES=0
+          
+          for service in "${SERVICES[@]}"; do
+            # Simulate service check (replace with actual health checks)
+            if [[ $((RANDOM % 10)) -eq 0 ]]; then
+              echo "❌ Service $service: Unhealthy"
+              ((SERVICE_ISSUES++))
+            else
+              echo "✅ Service $service: Healthy"
+            fi
+          done
+          
+          if [[ "$SERVICE_ISSUES" -gt 2 ]]; then
+            echo "🚨 Multiple service issues detected: $SERVICE_ISSUES services unhealthy"
+            echo "SERVICE_DISCOVERY_ALERT=true" >> $GITHUB_ENV
+          fi
+
+      - name: 💾 Storage Monitoring
+        run: |
+          echo "💾 Monitoring storage usage..."
+          
+          # Simulate storage monitoring
+          STORAGE_USAGE=$(shuf -i 40-95 -n 1)
+          echo "Storage usage: ${STORAGE_USAGE}%"
+          
+          if [[ "$STORAGE_USAGE" -gt 90 ]]; then
+            echo "🚨 Storage usage critical: ${STORAGE_USAGE}%"
+            echo "STORAGE_ALERT=true" >> $GITHUB_ENV
+          elif [[ "$STORAGE_USAGE" -gt 80 ]]; then
+            echo "⚠️ Storage usage high: ${STORAGE_USAGE}%"
+          fi
+
+      - name: 🚨 Infrastructure Alert
+        if: env.DOCKER_CONFIG_ALERT == 'true' || env.CONFIG_DRIFT_ALERT == 'true' || env.SERVICE_DISCOVERY_ALERT == 'true' || env.STORAGE_ALERT == 'true'
+        run: |
+          echo "🚨 INFRASTRUCTURE ALERT TRIGGERED!"
+          echo "Docker Config Issues: ${{ env.DOCKER_CONFIG_ALERT }}"
+          echo "Configuration Drift: ${{ env.CONFIG_DRIFT_ALERT }}"
+          echo "Service Discovery Issues: ${{ env.SERVICE_DISCOVERY_ALERT }}"
+          echo "Storage Issues: ${{ env.STORAGE_ALERT }}"
+
+  # Alert Aggregation and Notification
+  alert-aggregation:
+    name: 📢 Alert Aggregation
+    runs-on: ubuntu-latest
+    needs: [health-monitoring, performance-monitoring, security-monitoring, infrastructure-monitoring]
+    if: always()
+    steps:
+      - name: 📥 Download All Monitoring Data
+        uses: actions/download-artifact@v4
+
+      - name: 📊 Aggregate Monitoring Results
+        run: |
+          echo "📊 Aggregating monitoring results..."
+          
+          # Create comprehensive monitoring report
+          cat > monitoring-report.md << 'EOF'
+          # 📊 System Monitoring Report
+          
+          **Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Commit**: ${{ github.sha }}
+          **Branch**: ${{ github.ref_name }}
+          
+          ## Health Status
+          - **Health Monitoring**: ${{ needs.health-monitoring.result == 'success' && '✅ Healthy' || '❌ Issues Detected' }}
+          - **Performance**: ${{ needs.performance-monitoring.result == 'success' && '✅ Normal' || '❌ Performance Issues' }}
+          - **Security**: ${{ needs.security-monitoring.result == 'success' && '✅ Secure' || '❌ Security Concerns' }}
+          - **Infrastructure**: ${{ needs.infrastructure-monitoring.result == 'success' && '✅ Stable' || '❌ Infrastructure Issues' }}
+          
+          ## Alert Summary
+          
+          ### 🚨 Active Alerts
+          ${{ 
+            (needs.health-monitoring.result != 'success' || 
+             needs.performance-monitoring.result != 'success' || 
+             needs.security-monitoring.result != 'success' || 
+             needs.infrastructure-monitoring.result != 'success') && 
+            'Alerts detected - immediate attention required!' || 
+            'No active alerts - all systems operational'
+          }}
+          
+          ### 📈 Trends
+          - Monitor performance trends over time
+          - Track security vulnerability patterns
+          - Observe infrastructure stability metrics
+          
+          ## Recommendations
+          
+          1. 🔄 Review and address any failed health checks
+          2. ⚡ Optimize performance bottlenecks
+          3. 🛡️ Address security vulnerabilities promptly
+          4. 🏗️ Ensure infrastructure stability
+          5. 📊 Set up automated alerting for critical metrics
+          
+          ## Next Actions
+          
+          - [ ] Review alert details
+          - [ ] Implement fixes for critical issues
+          - [ ] Update monitoring thresholds if needed
+          - [ ] Schedule follow-up monitoring
+          
+          ---
+          *Generated by automated monitoring system*
+          EOF
+
+      - name: 🚨 Critical Alert Notification
+        if: |
+          needs.health-monitoring.result == 'failure' ||
+          needs.performance-monitoring.result == 'failure' ||
+          needs.security-monitoring.result == 'failure' ||
+          needs.infrastructure-monitoring.result == 'failure'
+        run: |
+          echo "🚨 CRITICAL SYSTEM ALERT!"
+          echo "Multiple system issues detected requiring immediate attention."
+          echo ""
+          echo "Failed checks:"
+          echo "- Health: ${{ needs.health-monitoring.result }}"
+          echo "- Performance: ${{ needs.performance-monitoring.result }}"
+          echo "- Security: ${{ needs.security-monitoring.result }}"
+          echo "- Infrastructure: ${{ needs.infrastructure-monitoring.result }}"
+          
+          # Here you would integrate with:
+          # - Slack webhooks
+          # - Microsoft Teams
+          # - PagerDuty
+          # - Email notifications
+          # - SMS alerts
+
+      - name: 📧 Slack Notification (if configured)
+        if: env.SLACK_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{
+              "text":"🚨 Claude Flow Monitoring Alert",
+              "attachments":[{
+                "color":"danger",
+                "fields":[{
+                  "title":"System Status",
+                  "value":"Issues detected in monitoring checks",
+                  "short":false
+                }]
+              }]
+            }' \
+            ${{ env.SLACK_WEBHOOK_URL }}
+
+      - name: 📊 Upload Monitoring Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitoring-report
+          path: monitoring-report.md
+
+      - name: 📈 Update Monitoring Dashboard
+        run: |
+          echo "📈 Updating monitoring dashboard..."
+          # Here you would update external monitoring dashboards
+          # - Grafana
+          # - DataDog
+          # - New Relic
+          # - Custom dashboards
+          echo "Dashboard update completed"

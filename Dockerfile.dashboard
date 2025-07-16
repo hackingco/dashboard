@@ -1,0 +1,42 @@
+FROM node:20-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    sqlite \
+    sqlite-dev \
+    python3 \
+    make \
+    g++ \
+    git \
+    curl
+
+# Set working directory
+WORKDIR /app
+
+# Copy simplified package file for Docker
+COPY docker-package.json ./package.json
+
+# Install dependencies
+RUN npm install --omit=dev
+
+# Copy application code
+COPY . .
+
+# Create dashboard directory
+RUN mkdir -p /app/dashboard/public
+
+# Copy dashboard files
+COPY docker/dashboard ./dashboard/
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Expose dashboard port
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:3001/health || exit 1
+
+# Start dashboard
+CMD ["node", "dashboard/server.js"]

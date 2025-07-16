@@ -1,0 +1,30 @@
+FROM node:18-alpine AS base
+RUN apk add --no-cache libc6-compat curl
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy source code
+COPY . .
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 claude-flow
+
+# Set up directories
+RUN mkdir -p .swarm .hive-mind logs
+RUN chown -R claude-flow:nodejs .swarm .hive-mind logs
+
+# Health check script
+RUN echo '#!/bin/sh\ncurl -f http://localhost:8080/health || exit 1' > /healthcheck.sh
+RUN chmod +x /healthcheck.sh
+
+USER claude-flow
+
+EXPOSE 8080 8081
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 CMD ["/healthcheck.sh"]
+
+CMD ["node", "src/server/manager.js"]

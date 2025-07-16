@@ -1,202 +1,205 @@
-version: '3.8'
+# Docker Compose file for Langfuse Test Environment
 
 services:
-  # Test Database
-  postgres:
+  # PostgreSQL Database for Testing
+  postgres-test:
     image: postgres:15-alpine
+    container_name: langfuse-postgres-test
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: testpass
-      POSTGRES_DB: swarm_test
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse_secret
+      POSTGRES_DB: langfuse
+      POSTGRES_INITDB_ARGS: "--auth-local=trust"
     volumes:
       - postgres_test_data:/var/lib/postgresql/data
+      - ./config/postgres/init-langfuse-clean.sql:/docker-entrypoint-initdb.d/01-init-langfuse-clean.sql:ro
+    ports:
+      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    networks:
+      - langfuse-test-network
 
-  # Test Redis
-  redis:
+  # ClickHouse for Langfuse v3 Analytics
+  clickhouse-test:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse-test
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: langfuse
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: langfuse_secret
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_test_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - langfuse-test-network
+
+  # Langfuse Server on Port 3050 (to avoid conflicts)
+  langfuse-server-test:
+    image: langfuse/langfuse:2.73.0
+    container_name: langfuse-server-test
+    restart: unless-stopped
+    depends_on:
+      - postgres-test
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse_secret@postgres-test:5432/langfuse
+# Using Langfuse v2.73.0 which doesn't require ClickHouse
+      NEXTAUTH_URL: http://localhost:3050
+      NEXTAUTH_SECRET: test_nextauth_secret_for_development_only
+      SALT: test_salt_for_development_only
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+      ENCRYPTION_KEY: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2
+      # Disable authentication for testing
+      AUTH_DISABLE_USERNAME_PASSWORD: "false"
+      AUTH_DISABLE_SIGNUP: "false"
+    ports:
+      - "3050:3000"  # Map internal 3000 to external 3050
+    volumes:
+      - langfuse_test_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - langfuse-test-network
+
+  # Test Container for Langfuse Wrapper
+  langfuse-wrapper-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: langfuse-wrapper-test
+    depends_on:
+      langfuse-server-test:
+        condition: service_healthy
+    environment:
+      NODE_ENV: test
+      LANGFUSE_PUBLIC_KEY: pk-lf-test-key-12345
+      LANGFUSE_SECRET_KEY: sk-lf-test-secret-67890
+      LANGFUSE_HOST: http://langfuse-server-test:3000
+      LANGFUSE_BASE_URL: http://langfuse-server-test:3000
+      DATABASE_URL: postgresql://langfuse:langfuse_secret@postgres-test:5432/langfuse
+      
+      # Test Configuration
+      SWARM_ID: test-swarm-deployment
+      AGENT_ID: test-wrapper
+      AGENT_ROLE: tester
+      TEST_MODE: "true"
+      
+      # Feature Flags
+      LANGFUSE_COORDINATION_ENABLED: "true"
+      LANGFUSE_MEMORY_DB_PATH: /app/data/.swarm/test-memory.db
+      LANGFUSE_FEATURE_AUTO_TRACING: "true"
+      LANGFUSE_FEATURE_SPAN_ENRICHMENT: "true"
+      LANGFUSE_FEATURE_TOKEN_TRACKING: "true"
+      LANGFUSE_FEATURE_MEMORY_COORDINATION: "true"
+      LANGFUSE_FEATURE_HOOK_INTERCEPTION: "true"
+      LANGFUSE_FEATURE_PERFORMANCE_MONITORING: "true"
+      
+      # Logging
+      LANGFUSE_LOG_LEVEL: debug
+      LANGFUSE_COLLECT_METRICS: "true"
+      LANGFUSE_TRACK_TOKEN_COSTS: "true"
+      LANGFUSE_VERBOSE_TRACING: "true"
+    volumes:
+      - test_data:/app/data
+      - ./shared/langfuse-wrapper:/app/langfuse-wrapper:ro
+      - ./shared/langfuse-wrapper/tests:/app/tests:ro
+    working_dir: /app/langfuse-wrapper
+    command: ["npm", "run", "test:comprehensive"]
+    networks:
+      - langfuse-test-network
+    profiles:
+      - testing
+
+  # Redis for Testing (Optional)
+  redis-test:
     image: redis:7-alpine
+    container_name: redis-test
+    restart: unless-stopped
+    command: redis-server --requirepass test_redis_password
+    environment:
+      REDIS_PASSWORD: test_redis_password
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes
     volumes:
       - redis_test_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 3
+    networks:
+      - langfuse-test-network
+    profiles:
+      - testing
 
-  # Mock Fly.io API
-  fly-mock:
-    build:
-      context: ./tests/mocks
-      dockerfile: Dockerfile.fly-mock
-    ports:
-      - "8081:8080"
-    environment:
-      MOCK_DELAY: 100
-      MOCK_ERROR_RATE: 0.05
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Manager Service (Test Mode)
-  manager:
-    build:
-      context: ./apps/manager
-      dockerfile: Dockerfile
-      target: test
-    ports:
-      - "3001:3001"
-    environment:
-      NODE_ENV: test
-      PORT: 3001
-      DATABASE_URL: postgresql://postgres:testpass@postgres:5432/swarm_test
-      REDIS_URL: redis://redis:6379
-      FLY_API_URL: http://fly-mock:8080
-      FLY_API_TOKEN: test-token
-      LOG_LEVEL: debug
+  # Health Check Service
+  health-monitor:
+    image: curlimages/curl:latest
+    container_name: health-monitor
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      fly-mock:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Worker Service (Test Mode)
-  worker:
-    build:
-      context: ./apps/worker
-      dockerfile: Dockerfile
-      target: test
-    environment:
-      NODE_ENV: test
-      REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://postgres:testpass@postgres:5432/swarm_test
-      FLY_API_URL: http://fly-mock:8080
-      FLY_API_TOKEN: test-token
-      WORKER_CONCURRENCY: 2
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      fly-mock:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "node", "healthcheck.js"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Dashboard Service (Test Mode)
-  dashboard:
-    build:
-      context: ./apps/dashboard
-      dockerfile: Dockerfile
-      target: test
-    ports:
-      - "3000:3000"
-    environment:
-      NODE_ENV: test
-      NEXT_PUBLIC_API_URL: http://manager:3001
-      NEXT_PUBLIC_SUPABASE_URL: http://supabase-kong:8000
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
-    depends_on:
-      manager:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Test Runner
-  test-runner:
-    build:
-      context: .
-      dockerfile: Dockerfile.test-runner
-    volumes:
-      - ./tests:/tests
-      - ./coverage:/coverage
-      - test_results:/results
-    environment:
-      TEST_ENV: integration
-      DASHBOARD_URL: http://dashboard:3000
-      MANAGER_URL: http://manager:3001
-      DATABASE_URL: postgresql://postgres:testpass@postgres:5432/swarm_test
-      REDIS_URL: redis://redis:6379
-    depends_on:
-      dashboard:
-        condition: service_healthy
-      manager:
-        condition: service_healthy
-      worker:
+      langfuse-server-test:
         condition: service_healthy
     command: |
-      sh -c "
-        echo 'Waiting for services to be ready...'
-        sleep 10
-        echo 'Running integration tests...'
-        pnpm run test:integration
-        echo 'Running E2E tests...'
-        pnpm run test:e2e
-        echo 'Generating coverage report...'
-        pnpm run coverage:merge
-      "
-
-  # Monitoring Stack (Optional)
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.test.yml:/etc/prometheus/prometheus.yml
-      - prometheus_test_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-    depends_on:
-      - manager
-      - dashboard
-
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3030:3000"
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_USERS_ALLOW_SIGN_UP: false
-    volumes:
-      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards
-      - ./monitoring/datasources.test.yml:/etc/grafana/provisioning/datasources/datasources.yml
-      - grafana_test_data:/var/lib/grafana
-    depends_on:
-      - prometheus
+      sh -c '
+        echo "Starting health monitoring..."
+        while true; do
+          echo "Checking Langfuse health..."
+          if curl -f http://langfuse-server-test:3000/api/public/health; then
+            echo "✅ Langfuse is healthy"
+          else
+            echo "❌ Langfuse health check failed"
+          fi
+          
+          echo "Checking PostgreSQL health..."
+          if nc -z postgres-test 5432; then
+            echo "✅ PostgreSQL is accessible"
+          else
+            echo "❌ PostgreSQL connection failed"
+          fi
+          
+          sleep 30
+        done
+      '
+    networks:
+      - langfuse-test-network
+    profiles:
+      - monitoring
 
 volumes:
   postgres_test_data:
+    driver: local
+  clickhouse_test_data:
+    driver: local
+  langfuse_test_data:
+    driver: local
   redis_test_data:
-  prometheus_test_data:
-  grafana_test_data:
-  test_results:
+    driver: local
+  test_data:
+    driver: local
 
 networks:
-  default:
-    name: swarm-test-network
+  langfuse-test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16

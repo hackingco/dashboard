@@ -1,0 +1,307 @@
+# Alert Configuration for Swarm Monitoring System
+# Version: 1.0.0
+
+global:
+  evaluation_interval: 30s
+  notification_channels:
+    - name: email
+      type: email
+      config:
+        smtp_host: smtp.example.com
+        smtp_port: 587
+        from: alerts@swarm-system.com
+        
+    - name: slack
+      type: slack
+      config:
+        webhook_url: ${SLACK_WEBHOOK_URL}
+        channel: "#swarm-alerts"
+        
+    - name: pagerduty
+      type: pagerduty
+      config:
+        integration_key: ${PAGERDUTY_KEY}
+        
+    - name: webhook
+      type: webhook
+      config:
+        url: http://localhost:3000/api/alerts
+        method: POST
+
+alert_rules:
+  # Critical System Alerts
+  - name: system_health_critical
+    expr: system.health.overall < 50
+    for: 1m
+    severity: critical
+    annotations:
+      summary: "System health critically low"
+      description: "Overall system health has dropped below 50% (current: {{ $value }}%)"
+      runbook: https://docs.swarm/runbooks/system-health
+    actions:
+      - notify: [pagerduty, slack]
+      - execute: emergency_response_protocol
+      
+  - name: complete_system_failure
+    expr: agents.active.count == 0 AND traces.throughput.per_minute == 0
+    for: 30s
+    severity: critical
+    annotations:
+      summary: "Complete system failure detected"
+      description: "No active agents and zero throughput detected"
+    actions:
+      - notify: [pagerduty, email, slack]
+      - execute: system_restart_procedure
+      
+  - name: langfuse_connection_lost
+    expr: langfuse.connection.status != "connected"
+    for: 2m
+    severity: critical
+    annotations:
+      summary: "Langfuse connection lost"
+      description: "Unable to connect to Langfuse API for trace collection"
+    actions:
+      - notify: [slack, email]
+      - execute: langfuse_reconnect
+      
+  # High Severity Alerts
+  - name: high_error_rate
+    expr: traces.error_rate > 10
+    for: 5m
+    severity: high
+    annotations:
+      summary: "High error rate detected"
+      description: "Error rate is {{ $value }}% (threshold: 10%)"
+      impact: "User experience degraded, potential data loss"
+    actions:
+      - notify: [slack]
+      - throttle: 
+          incoming_requests: 0.8
+          duration: 10m
+      
+  - name: response_time_degradation
+    expr: performance.p95 > 2000
+    for: 10m
+    severity: high
+    annotations:
+      summary: "Response time degradation"
+      description: "P95 latency is {{ $value }}ms (threshold: 2000ms)"
+    actions:
+      - notify: [slack]
+      - scale:
+          agents: +2
+          reason: "performance_degradation"
+          
+  - name: cost_spike
+    expr: cost.per_hour > (cost.rolling_avg_24h * 2)
+    for: 15m
+    severity: high
+    annotations:
+      summary: "Significant cost spike detected"
+      description: "Current cost ${{ $value }}/hour is 2x the 24h average"
+    actions:
+      - notify: [email, slack]
+      - analyze: cost_breakdown
+      - limit:
+          expensive_models: true
+          max_tokens: 1000
+          
+  # Medium Severity Alerts
+  - name: agent_resource_pressure
+    expr: avg(agents.cpu_usage) > 80 OR avg(agents.memory_usage) > 85
+    for: 15m
+    severity: medium
+    annotations:
+      summary: "Agent resource pressure"
+      description: "Average CPU: {{ $labels.cpu }}%, Memory: {{ $labels.memory }}%"
+    actions:
+      - notify: [slack]
+      - scale:
+          agents: +1
+          distribute_load: true
+          
+  - name: trace_backlog_growing
+    expr: traces.queue_depth > 100 AND rate(traces.queue_depth[5m]) > 0
+    for: 10m
+    severity: medium
+    annotations:
+      summary: "Trace processing backlog growing"
+      description: "Queue depth: {{ $value }} and increasing"
+    actions:
+      - notify: [slack]
+      - optimize:
+          batch_size: increase
+          parallel_processing: true
+          
+  - name: langfuse_sync_lag
+    expr: (time() - langfuse.last_sync_timestamp) > 300
+    for: 5m
+    severity: medium
+    annotations:
+      summary: "Langfuse sync lagging"
+      description: "Last successful sync was {{ $value }} seconds ago"
+    actions:
+      - notify: [slack]
+      - force_sync: true
+      
+  # Low Severity Alerts
+  - name: approaching_rate_limit
+    expr: api.rate_limit.remaining < (api.rate_limit.total * 0.2)
+    for: 5m
+    severity: low
+    annotations:
+      summary: "Approaching API rate limit"
+      description: "Only {{ $value }} requests remaining in current window"
+    actions:
+      - notify: [slack]
+      - throttle:
+          api_calls: 0.7
+          
+  - name: cache_hit_rate_low
+    expr: cache.hit_rate < 0.7
+    for: 30m
+    severity: low
+    annotations:
+      summary: "Cache hit rate below optimal"
+      description: "Current hit rate: {{ $value | percentage }}"
+    actions:
+      - notify: [email]
+      - optimize:
+          cache_strategy: "review"
+          
+  - name: agent_imbalance
+    expr: stddev(agents.task_count) > (avg(agents.task_count) * 0.5)
+    for: 20m
+    severity: low
+    annotations:
+      summary: "Agent workload imbalance detected"
+      description: "Standard deviation of task distribution is high"
+    actions:
+      - rebalance:
+          strategy: "round_robin"
+          grace_period: 5m
+
+# Intelligent Alert Patterns
+alert_patterns:
+  - name: cascading_failure_detection
+    conditions:
+      - alert: agent_resource_pressure
+        followed_by: high_error_rate
+        within: 5m
+    severity: critical
+    annotations:
+      summary: "Cascading failure pattern detected"
+      description: "Resource pressure followed by errors indicates system overload"
+    actions:
+      - execute: emergency_scaling
+      - notify: [pagerduty]
+      
+  - name: cost_anomaly_pattern
+    conditions:
+      - metric: cost.per_hour
+        anomaly_detection:
+          method: isolation_forest
+          sensitivity: high
+          lookback: 7d
+    severity: medium
+    annotations:
+      summary: "Cost anomaly detected"
+      description: "Unusual cost pattern detected by ML model"
+    actions:
+      - analyze: detailed_cost_breakdown
+      - notify: [email]
+
+# Remediation Actions
+remediation_actions:
+  emergency_response_protocol:
+    steps:
+      - verify_infrastructure_health
+      - restart_failed_agents
+      - redistribute_workload
+      - enable_fallback_mode
+      - notify_oncall_team
+      
+  system_restart_procedure:
+    steps:
+      - capture_system_state
+      - graceful_shutdown_attempt
+      - force_restart_if_needed
+      - validate_startup_health
+      - restore_previous_state
+      
+  langfuse_reconnect:
+    steps:
+      - check_network_connectivity
+      - validate_credentials
+      - attempt_reconnection:
+          max_retries: 5
+          backoff: exponential
+      - fallback_to_local_storage
+      
+  emergency_scaling:
+    steps:
+      - provision_resources:
+          agents: 5
+          priority: high
+      - migrate_active_tasks
+      - update_load_balancer
+      - verify_new_capacity
+
+# Alert Aggregation Rules
+aggregation_rules:
+  - name: suppress_duplicate_errors
+    window: 5m
+    group_by: [error_type, agent_id]
+    threshold: 5
+    action: summarize
+    
+  - name: correlate_performance_alerts
+    window: 10m
+    alerts: [response_time_degradation, agent_resource_pressure, high_error_rate]
+    action: create_incident
+    
+  - name: business_hours_routing
+    schedule:
+      weekdays: "09:00-17:00"
+      timezone: "America/New_York"
+    severity_override:
+      low: suppress
+      medium: delay_until_business_hours
+      high: immediate
+      critical: immediate
+
+# SLA Definitions
+sla_tracking:
+  - name: availability_sla
+    target: 99.9
+    measurement: system.uptime_percentage
+    window: rolling_30d
+    alert_at: [99.5, 99.0]
+    
+  - name: performance_sla
+    target: 
+      p50: 500
+      p95: 2000
+      p99: 5000
+    measurement: performance.latency_percentiles
+    window: rolling_24h
+    
+  - name: error_rate_sla
+    target: 1.0
+    measurement: traces.error_rate
+    window: rolling_7d
+    alert_at: [2.0, 5.0]
+
+# Dashboard Integration
+dashboard_annotations:
+  - alert: high_error_rate
+    dashboards: [swarm-overview, trace-analysis]
+    annotation:
+      color: red
+      tags: [error, performance]
+      
+  - alert: cost_spike
+    dashboards: [cost-management]
+    annotation:
+      color: orange
+      tags: [cost, budget]

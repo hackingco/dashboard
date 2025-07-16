@@ -1,0 +1,323 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for Langfuse
+  postgres:
+    image: postgres:15
+    container_name: swarm-postgres
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Coordination and Caching
+  redis:
+    image: redis:7-alpine
+    container_name: swarm-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - swarm-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Langfuse v2 Server
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: swarm-langfuse
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse_password@postgres:5432/langfuse
+      NEXTAUTH_SECRET: langfuse-secret-key-change-in-production
+      SALT: salt-change-in-production
+      NEXTAUTH_URL: http://localhost:3000
+      TELEMETRY_ENABLED: true
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: true
+      REDIS_URL: redis://redis:6379
+      LANGFUSE_DEFAULT_PROJECT_ID: swarm-project
+      LANGFUSE_DEFAULT_PROJECT_NAME: "Swarm Intelligence"
+    ports:
+      - "3000:3000"
+    networks:
+      - swarm-network
+    volumes:
+      - ./config/langfuse:/app/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Swarm Coordinator Service
+  swarm-coordinator:
+    build:
+      context: .
+      dockerfile: Dockerfile.swarm-coordinator
+    container_name: swarm-coordinator
+    depends_on:
+      - langfuse
+      - redis
+    environment:
+      LANGFUSE_PUBLIC_KEY: pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20
+      LANGFUSE_SECRET_KEY: sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60
+      LANGFUSE_HOST: http://langfuse:3000
+      REDIS_URL: redis://redis:6379
+      SWARM_MODE: coordinator
+      SWARM_ID: docker-swarm-${RANDOM_ID:-1}
+      AGENT_COUNT: 8
+      MEMORY_DB_PATH: /app/data/memory.db
+    volumes:
+      - swarm_data:/app/data
+      - ./shared/langfuse-wrapper:/app/shared/langfuse-wrapper
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - swarm-network
+    ports:
+      - "8000:8000"
+
+  # Research Agent
+  swarm-researcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.swarm-agent
+    container_name: swarm-researcher
+    depends_on:
+      - swarm-coordinator
+    environment:
+      LANGFUSE_PUBLIC_KEY: pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20
+      LANGFUSE_SECRET_KEY: sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60
+      LANGFUSE_HOST: http://langfuse:3000
+      REDIS_URL: redis://redis:6379
+      SWARM_MODE: agent
+      AGENT_TYPE: researcher
+      AGENT_ID: researcher-docker-alpha
+      COORDINATOR_URL: http://swarm-coordinator:8000
+      MEMORY_DB_PATH: /app/data/memory.db
+    volumes:
+      - swarm_data:/app/data
+      - ./shared/langfuse-wrapper:/app/shared/langfuse-wrapper
+    networks:
+      - swarm-network
+
+  # Coder Agent 1
+  swarm-coder-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.swarm-agent
+    container_name: swarm-coder-1
+    depends_on:
+      - swarm-coordinator
+    environment:
+      LANGFUSE_PUBLIC_KEY: pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20
+      LANGFUSE_SECRET_KEY: sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60
+      LANGFUSE_HOST: http://langfuse:3000
+      REDIS_URL: redis://redis:6379
+      SWARM_MODE: agent
+      AGENT_TYPE: coder
+      AGENT_ID: coder-docker-beta
+      COORDINATOR_URL: http://swarm-coordinator:8000
+      MEMORY_DB_PATH: /app/data/memory.db
+    volumes:
+      - swarm_data:/app/data
+      - ./shared/langfuse-wrapper:/app/shared/langfuse-wrapper
+    networks:
+      - swarm-network
+
+  # Coder Agent 2
+  swarm-coder-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.swarm-agent
+    container_name: swarm-coder-2
+    depends_on:
+      - swarm-coordinator
+    environment:
+      LANGFUSE_PUBLIC_KEY: pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20
+      LANGFUSE_SECRET_KEY: sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60
+      LANGFUSE_HOST: http://langfuse:3000
+      REDIS_URL: redis://redis:6379
+      SWARM_MODE: agent
+      AGENT_TYPE: coder
+      AGENT_ID: coder-docker-gamma
+      COORDINATOR_URL: http://swarm-coordinator:8000
+      MEMORY_DB_PATH: /app/data/memory.db
+    volumes:
+      - swarm_data:/app/data
+      - ./shared/langfuse-wrapper:/app/shared/langfuse-wrapper
+    networks:
+      - swarm-network
+
+  # Analyst Agent
+  swarm-analyst:
+    build:
+      context: .
+      dockerfile: Dockerfile.swarm-agent
+    container_name: swarm-analyst
+    depends_on:
+      - swarm-coordinator
+    environment:
+      LANGFUSE_PUBLIC_KEY: pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20
+      LANGFUSE_SECRET_KEY: sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60
+      LANGFUSE_HOST: http://langfuse:3000
+      REDIS_URL: redis://redis:6379
+      SWARM_MODE: agent
+      AGENT_TYPE: analyst
+      AGENT_ID: analyst-docker-delta
+      COORDINATOR_URL: http://swarm-coordinator:8000
+      MEMORY_DB_PATH: /app/data/memory.db
+    volumes:
+      - swarm_data:/app/data
+      - ./shared/langfuse-wrapper:/app/shared/langfuse-wrapper
+    networks:
+      - swarm-network
+
+  # Architect Agent
+  swarm-architect:
+    build:
+      context: .
+      dockerfile: Dockerfile.swarm-agent
+    container_name: swarm-architect
+    depends_on:
+      - swarm-coordinator
+    environment:
+      LANGFUSE_PUBLIC_KEY: pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20
+      LANGFUSE_SECRET_KEY: sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60
+      LANGFUSE_HOST: http://langfuse:3000
+      REDIS_URL: redis://redis:6379
+      SWARM_MODE: agent
+      AGENT_TYPE: architect
+      AGENT_ID: architect-docker-epsilon
+      COORDINATOR_URL: http://swarm-coordinator:8000
+      MEMORY_DB_PATH: /app/data/memory.db
+    volumes:
+      - swarm_data:/app/data
+      - ./shared/langfuse-wrapper:/app/shared/langfuse-wrapper
+    networks:
+      - swarm-network
+
+  # Tester Agent
+  swarm-tester:
+    build:
+      context: .
+      dockerfile: Dockerfile.swarm-agent
+    container_name: swarm-tester
+    depends_on:
+      - swarm-coordinator
+    environment:
+      LANGFUSE_PUBLIC_KEY: pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20
+      LANGFUSE_SECRET_KEY: sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60
+      LANGFUSE_HOST: http://langfuse:3000
+      REDIS_URL: redis://redis:6379
+      SWARM_MODE: agent
+      AGENT_TYPE: tester
+      AGENT_ID: tester-docker-zeta
+      COORDINATOR_URL: http://swarm-coordinator:8000
+      MEMORY_DB_PATH: /app/data/memory.db
+    volumes:
+      - swarm_data:/app/data
+      - ./shared/langfuse-wrapper:/app/shared/langfuse-wrapper
+    networks:
+      - swarm-network
+
+  # Reviewer Agent
+  swarm-reviewer:
+    build:
+      context: .
+      dockerfile: Dockerfile.swarm-agent
+    container_name: swarm-reviewer
+    depends_on:
+      - swarm-coordinator
+    environment:
+      LANGFUSE_PUBLIC_KEY: pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20
+      LANGFUSE_SECRET_KEY: sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60
+      LANGFUSE_HOST: http://langfuse:3000
+      REDIS_URL: redis://redis:6379
+      SWARM_MODE: agent
+      AGENT_TYPE: reviewer
+      AGENT_ID: reviewer-docker-eta
+      COORDINATOR_URL: http://swarm-coordinator:8000
+      MEMORY_DB_PATH: /app/data/memory.db
+    volumes:
+      - swarm_data:/app/data
+      - ./shared/langfuse-wrapper:/app/shared/langfuse-wrapper
+    networks:
+      - swarm-network
+
+  # Monitor Agent
+  swarm-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.swarm-agent
+    container_name: swarm-monitor
+    depends_on:
+      - swarm-coordinator
+    environment:
+      LANGFUSE_PUBLIC_KEY: pk-lf-62853aa9-4049-4312-9042-fcd7bcf6fe20
+      LANGFUSE_SECRET_KEY: sk-lf-d362f0f3-4a00-410e-b3a8-c29e055c2c60
+      LANGFUSE_HOST: http://langfuse:3000
+      REDIS_URL: redis://redis:6379
+      SWARM_MODE: agent
+      AGENT_TYPE: monitor
+      AGENT_ID: monitor-docker-theta
+      COORDINATOR_URL: http://swarm-coordinator:8000
+      MEMORY_DB_PATH: /app/data/memory.db
+    volumes:
+      - swarm_data:/app/data
+      - ./shared/langfuse-wrapper:/app/shared/langfuse-wrapper
+    networks:
+      - swarm-network
+
+  # Real-time Tracing Dashboard
+  tracing-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: swarm-dashboard
+    depends_on:
+      - langfuse
+      - redis
+    environment:
+      LANGFUSE_HOST: http://langfuse:3000
+      REDIS_URL: redis://redis:6379
+      DASHBOARD_PORT: 3001
+    ports:
+      - "3001:3001"
+    volumes:
+      - swarm_data:/app/data
+    networks:
+      - swarm-network
+
+networks:
+  swarm-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  swarm_data:
+    driver: local

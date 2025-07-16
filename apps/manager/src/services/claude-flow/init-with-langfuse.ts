@@ -1,16 +1,7 @@
 import { HiveService } from './hive.service';
 import { AgentService } from './agent.service';
-// TODO: Re-enable when @swarm/langfuse-wrapper package is available
-// import { autoRegisterLangfuse, isLangfuseConfigured } from '@swarm/langfuse-wrapper';
-
-// Temporary fallback functions
-function isLangfuseConfigured(): boolean {
-  return !!(process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY);
-}
-
-function autoRegisterLangfuse(config: any): void {
-  console.log('⚠️  Langfuse auto-registration temporarily disabled - package not available');
-}
+// Fixed: Re-enabled @swarm/langfuse-wrapper import now that package is properly built
+import { autoRegisterLangfuse, isLangfuseConfigured } from '@swarm/langfuse-wrapper';
 
 /**
  * Initialize Claude Flow Hive Mind services with Langfuse integration

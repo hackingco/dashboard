@@ -1,0 +1,677 @@
+# Docker Compose file for Claude Flow Swarm Wrapper
+
+# 🐝 Claude Flow Swarm Wrapper with Langfuse v3 Tracing
+# Comprehensive Docker stack for individual agent containers with ClickHouse/Prisma
+# Usage: docker-compose -f docker-compose.swarm-wrapper.yml up --scale swarm-agent=5
+
+services:
+  # ═══════════════════════════════════════════════════════════════
+  # 🏗️ INFRASTRUCTURE LAYER
+  # ═══════════════════════════════════════════════════════════════
+  
+  # ClickHouse - Analytical database for Langfuse v3
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: swarm-clickhouse
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"  # HTTP API
+      - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"  # Native protocol
+      - "${CLICKHOUSE_MYSQL_PORT:-9004}:9004"   # MySQL compatibility
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:-swarm_analytics}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-swarm-clickhouse-2024}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+      - ./config/clickhouse/users.xml:/etc/clickhouse-server/users.d/custom.xml:ro
+    networks:
+      - swarm-infrastructure
+      - swarm-analytics
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  # PostgreSQL - Primary database with Prisma
+  postgres:
+    image: postgres:15-alpine
+    container_name: swarm-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-swarm-postgres-2024}
+      POSTGRES_DB: ${POSTGRES_DB:-swarm_production}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/postgres/init-swarm-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./scripts/postgres/create-langfuse-db.sql:/docker-entrypoint-initdb.d/02-langfuse.sql:ro
+      - ./scripts/postgres/create-prisma-db.sql:/docker-entrypoint-initdb.d/03-prisma.sql:ro
+    networks:
+      - swarm-infrastructure
+      - swarm-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-swarm_production}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Redis - Cache and pub/sub for swarm coordination
+  redis:
+    image: redis:7-alpine
+    container_name: swarm-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-swarm-redis-2024}
+    command: |
+      redis-server 
+      --requirepass ${REDIS_PASSWORD:-swarm-redis-2024}
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis-data:/data
+      - ./config/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - swarm-infrastructure
+      - swarm-coordination
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ═══════════════════════════════════════════════════════════════
+  # 🧠 SWARM COORDINATION LAYER
+  # ═══════════════════════════════════════════════════════════════
+
+  # Hive Mind - Central swarm intelligence (using simple Node.js image)
+  hive-mind:
+    image: node:18-alpine
+    container_name: swarm-hive-mind
+    ports:
+      - "${HIVE_MIND_PORT:-8888}:8888"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 8888
+      REDIS_URL: redis://:${REDIS_PASSWORD:-swarm-redis-2024}@redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres-2024}@postgres:5432/${POSTGRES_DB:-swarm_production}
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-swarm-clickhouse-2024}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: http://langfuse:3000
+      SWARM_MAX_AGENTS: ${SWARM_MAX_AGENTS:-50}
+      SWARM_COORDINATION_MODE: ${SWARM_COORDINATION_MODE:-hierarchical}
+      NEURAL_PATTERNS_ENABLED: ${NEURAL_PATTERNS_ENABLED:-true}
+    command: ["sh", "-c", "echo 'Hive Mind placeholder - ready for coordination' && sleep infinity"]
+    volumes:
+      - ./.hive-mind:/app/.hive-mind
+      - ./logs/hive-mind:/app/logs
+    networks:
+      - swarm-coordination
+      - swarm-infrastructure
+    depends_on:
+      - postgres
+      - redis
+      - clickhouse
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Claude Flow MCP Server (using simple Node.js image)
+  claude-flow:
+    image: node:18-alpine
+    container_name: swarm-claude-flow
+    ports:
+      - "${CLAUDE_FLOW_PORT:-8889}:8080"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 8080
+      REDIS_URL: redis://:${REDIS_PASSWORD:-swarm-redis-2024}@redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres-2024}@postgres:5432/${POSTGRES_DB:-swarm_production}
+      HIVE_MIND_URL: http://hive-mind:8888
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: http://langfuse:3000
+      MCP_SERVER_ENABLED: true
+      SWARM_AGENT_COORDINATION: true
+    command: ["sh", "-c", "echo 'Claude Flow MCP Server placeholder - ready for coordination' && sleep infinity"]
+    volumes:
+      - ./claude-flow:/app
+      - ./.swarm:/app/.swarm
+      - ./logs/claude-flow:/app/logs
+    networks:
+      - swarm-coordination
+      - swarm-infrastructure
+    depends_on:
+      - hive-mind
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ═══════════════════════════════════════════════════════════════
+  # 📊 LANGFUSE v3 OBSERVABILITY LAYER
+  # ═══════════════════════════════════════════════════════════════
+
+  # Langfuse v3 - Main application with ClickHouse backend
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: swarm-langfuse
+    ports:
+      - "${LANGFUSE_PORT:-3001}:3000"
+    environment:
+      # PostgreSQL - Primary database for application data (URL encoded)
+      DATABASE_URL: "postgresql://postgres:pQCMqissMoUYvgpEUcqSAfnTTzgUXsjDc4F5c9PDgFA%3D@postgres:5432/langfuse"
+      
+      # ClickHouse v3 Configuration - Both URLs required for Langfuse v3
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: "8j5ZOWAYPzsmeerqJBh7dfdbMj6WJgwe3b8UOfdepZ0="
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      
+      # Authentication & Security - External URL for browser redirects
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: Zrs1iAd2K4LMLRbwKIWCNwMcbTqFzuQ4ChFtDLucBc
+      SALT: gJNhsdvo5Q9FgtesV2GKmpZvSwpoCoAwcraepiSjwjag
+      
+      # Essential Langfuse Configuration - Development mode for debugging
+      TELEMETRY_ENABLED: false
+      NODE_ENV: development
+      
+      # Langfuse API Keys - Properly formatted for Zod validation
+      LANGFUSE_PUBLIC_KEY: pk-lf-1234567890abcdef1234567890abcdef
+      LANGFUSE_SECRET_KEY: sk-lf-1234567890abcdef1234567890abcdef
+      
+      # Required for Langfuse stability  
+      HOSTNAME: localhost
+      
+      # Enable ClickHouse migrations with correct config
+      LANGFUSE_AUTO_CLICKHOUSE_MIGRATION_DISABLED: "false"
+      
+      # Remove problematic v3 experimental features temporarily
+      # LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: true
+      # LANGFUSE_V3_ENABLED: true
+      
+    volumes:
+      - langfuse-data:/app/.next/cache
+      - langfuse-uploads:/app/uploads
+    networks:
+      - swarm-analytics
+      - swarm-infrastructure
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Langfuse Worker v3 - Background processing for swarm traces
+  langfuse-worker:
+    image: langfuse/langfuse:latest
+    environment:
+      # PostgreSQL - Primary database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres-2024}@postgres:5432/langfuse
+      
+      # ClickHouse v3 Configuration
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-swarm-clickhouse-2024}
+      
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${REDIS_PASSWORD:-swarm-redis-2024}
+      
+      # Worker v3 Configuration for Swarm
+      LANGFUSE_WORKER_ENABLED: true
+      WORKER_CONCURRENCY: ${LANGFUSE_WORKER_CONCURRENCY:-20}
+      
+      # v3 Processing configuration for high-throughput swarm
+      LANGFUSE_CACHE_TTL: 3600
+      LANGFUSE_MAX_INGESTION_BATCH_SIZE: 10000
+      LANGFUSE_INGESTION_FLUSH_INTERVAL: 1000
+      
+      # Security
+      SALT: ${LANGFUSE_SALT:-swarm-langfuse-salt-min-32-chars-long-2024}
+      TELEMETRY_ENABLED: false
+      
+      # Swarm worker optimization
+      SWARM_WORKER_MODE: true
+      
+    volumes:
+      - langfuse-worker-data:/app/.next/cache
+    networks:
+      - swarm-analytics
+      - swarm-infrastructure
+    depends_on:
+      langfuse:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: ${LANGFUSE_WORKER_REPLICAS:-3}
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ═══════════════════════════════════════════════════════════════
+  # 🤖 SWARM AGENT LAYER
+  # ═══════════════════════════════════════════════════════════════
+
+  # Swarm Coordinator - Master coordination agent (using simple Node.js image)
+  swarm-coordinator:
+    image: node:18-alpine
+    container_name: swarm-coordinator
+    ports:
+      - "${SWARM_COORDINATOR_PORT:-8890}:8080"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      AGENT_TYPE: coordinator
+      AGENT_ID: coordinator-001
+      HIVE_MIND_URL: http://hive-mind:8888
+      CLAUDE_FLOW_URL: http://claude-flow:8080
+      REDIS_URL: redis://:${REDIS_PASSWORD:-swarm-redis-2024}@redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres-2024}@postgres:5432/${POSTGRES_DB:-swarm_production}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: http://langfuse:3000
+      MAX_CONCURRENT_TASKS: ${COORDINATOR_MAX_TASKS:-50}
+      COORDINATION_STRATEGY: ${COORDINATION_STRATEGY:-hierarchical}
+      AGENT_CAPABILITIES: "task_delegation,resource_allocation,performance_monitoring,consensus_building"
+    command: ["sh", "-c", "echo 'Swarm Coordinator placeholder - ready for task delegation' && sleep infinity"]
+    volumes:
+      - ./logs/coordinator:/app/logs
+      - ./.swarm:/app/.swarm
+    networks:
+      - swarm-coordination
+      - swarm-agents
+    depends_on:
+      - hive-mind
+      - claude-flow
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Swarm Agent - Scalable worker agents (using simple Node.js image)
+  swarm-agent:
+    image: node:18-alpine
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      AGENT_TYPE: ${AGENT_TYPE:-coder}  # coder, researcher, analyst, tester, optimizer
+      HIVE_MIND_URL: http://hive-mind:8888
+      CLAUDE_FLOW_URL: http://claude-flow:8080
+      COORDINATOR_URL: http://swarm-coordinator:8080
+      REDIS_URL: redis://:${REDIS_PASSWORD:-swarm-redis-2024}@redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres-2024}@postgres:5432/${POSTGRES_DB:-swarm_production}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: http://langfuse:3000
+      MAX_CONCURRENT_TASKS: ${AGENT_MAX_TASKS:-10}
+      TASK_TIMEOUT: ${AGENT_TASK_TIMEOUT:-300000}
+      MEMORY_LIMIT: ${AGENT_MEMORY_LIMIT:-512}
+    command: ["sh", "-c", "echo 'Swarm Agent (${AGENT_TYPE}) placeholder - ready for tasks' && sleep infinity"]
+    volumes:
+      - ./logs/agents:/app/logs
+      - ./.swarm:/app/.swarm
+      - ./workspace:/app/workspace
+    networks:
+      - swarm-coordination
+      - swarm-agents
+    depends_on:
+      - swarm-coordinator
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    # Scale with: docker-compose up --scale swarm-agent=10
+
+  # ═══════════════════════════════════════════════════════════════
+  # 🎛️ APPLICATION LAYER
+  # ═══════════════════════════════════════════════════════════════
+
+  # Manager API - Core application API (using simple Node.js image)
+  manager:
+    image: node:18-alpine
+    container_name: swarm-manager
+    ports:
+      - "${MANAGER_PORT:-8080}:8080"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 8080
+      REDIS_URL: redis://:${REDIS_PASSWORD:-swarm-redis-2024}@redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres-2024}@postgres:5432/${POSTGRES_DB:-swarm_production}
+      HIVE_MIND_URL: http://hive-mind:8888
+      CLAUDE_FLOW_URL: http://claude-flow:8080
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: http://langfuse:3000
+      DASHBOARD_URL: http://dashboard:3000
+      SWARM_INTEGRATION_ENABLED: true
+    command: ["sh", "-c", "echo 'Manager API placeholder - ready for swarm management' && sleep infinity"]
+    volumes:
+      - ./logs/manager:/app/logs
+    networks:
+      - swarm-infrastructure
+      - swarm-coordination
+    depends_on:
+      - hive-mind
+      - langfuse
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Dashboard - Web interface with swarm monitoring (using simple Node.js image)
+  dashboard:
+    image: node:18-alpine
+    container_name: swarm-dashboard
+    ports:
+      - "${DASHBOARD_PORT:-3002}:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      NEXT_PUBLIC_API_URL: http://localhost:${MANAGER_PORT:-8080}
+      NEXT_PUBLIC_HIVE_MIND_URL: http://localhost:${HIVE_MIND_PORT:-8888}
+      NEXT_PUBLIC_LANGFUSE_URL: http://localhost:${LANGFUSE_PORT:-3001}
+      NEXT_PUBLIC_SWARM_MONITORING: true
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: http://langfuse:3000
+    command: ["sh", "-c", "echo 'Dashboard placeholder - ready for swarm monitoring' && sleep infinity"]
+    volumes:
+      - ./logs/dashboard:/app/logs
+    networks:
+      - swarm-infrastructure
+    depends_on:
+      - manager
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # ═══════════════════════════════════════════════════════════════
+  # 🔍 MONITORING & LOAD BALANCING LAYER
+  # ═══════════════════════════════════════════════════════════════
+
+  # Nginx - Load balancer and reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: swarm-nginx
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./config/nginx/swarm-nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    networks:
+      - swarm-infrastructure
+      - swarm-external
+    depends_on:
+      - dashboard
+      - manager
+      - langfuse
+      - hive-mind
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # Prometheus - Metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: swarm-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus-swarm.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - swarm-monitoring
+      - swarm-infrastructure
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=30d'
+    restart: unless-stopped
+
+  # Grafana - Dashboard and visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: swarm-grafana
+    ports:
+      - "${GRAFANA_PORT:-3030}:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-swarm-admin-2024}
+      GF_INSTALL_PLUGINS: redis-datasource,clickhouse-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - swarm-monitoring
+      - swarm-infrastructure
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+# ═══════════════════════════════════════════════════════════════
+# 🌐 NETWORKS
+# ═══════════════════════════════════════════════════════════════
+
+networks:
+  # Infrastructure network - Core services
+  swarm-infrastructure:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+    
+  # Coordination network - Swarm coordination services
+  swarm-coordination:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+    
+  # Agent network - Individual agents communication
+  swarm-agents:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16
+    
+  # Data network - Database connections
+  swarm-data:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.23.0.0/16
+    
+  # Analytics network - Langfuse and ClickHouse
+  swarm-analytics:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.24.0.0/16
+    
+  # Monitoring network - Prometheus and Grafana
+  swarm-monitoring:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+    
+  # External network - Public access
+  swarm-external:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.26.0.0/16
+
+# ═══════════════════════════════════════════════════════════════
+# 💾 VOLUMES
+# ═══════════════════════════════════════════════════════════════
+
+volumes:
+  # Database volumes
+  postgres-data:
+    name: swarm-postgres-data
+    driver: local
+  clickhouse-data:
+    name: swarm-clickhouse-data
+    driver: local
+  clickhouse-logs:
+    name: swarm-clickhouse-logs
+    driver: local
+  redis-data:
+    name: swarm-redis-data
+    driver: local
+  
+  # Langfuse volumes
+  langfuse-data:
+    name: swarm-langfuse-data
+    driver: local
+  langfuse-uploads:
+    name: swarm-langfuse-uploads
+    driver: local
+  langfuse-worker-data:
+    name: swarm-langfuse-worker-data
+    driver: local
+  
+  # Monitoring volumes
+  prometheus-data:
+    name: swarm-prometheus-data
+    driver: local
+  grafana-data:
+    name: swarm-grafana-data
+    driver: local
+
+# ═══════════════════════════════════════════════════════════════
+# 🎯 PROFILES FOR DIFFERENT DEPLOYMENT SCENARIOS
+# ═══════════════════════════════════════════════════════════════
+
+# Usage examples:
+# 
+# 🚀 Quick start (minimal):
+# docker-compose -f docker-compose.swarm-wrapper.yml up
+# 
+# 🔧 Development with hot reload:
+# docker-compose -f docker-compose.swarm-wrapper.yml --profile dev up
+# 
+# 🏭 Production with scaling:
+# docker-compose -f docker-compose.swarm-wrapper.yml --profile production up --scale swarm-agent=10
+# 
+# 📊 Full monitoring stack:
+# docker-compose -f docker-compose.swarm-wrapper.yml --profile monitoring up
+# 
+# ⚡ High performance with all features:
+# docker-compose -f docker-compose.swarm-wrapper.yml --profile production --profile monitoring up --scale swarm-agent=20 --scale langfuse-worker=5

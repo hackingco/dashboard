@@ -1,0 +1,10 @@
+
+> fly-swarm-orchestrator@0.1.0 format:check /Users/shaight/claude-projects/swarm03
+> turbo run format:check
+
+  [31m×[0m could not resolve workspaces: We detected multiple package managers in
+  [31m│[0m your repository: pnpm, npm. Please remove one of them.
+[31m  ╰─▶ [0mWe detected multiple package managers in your repository: pnpm, npm.
+[31m      [0mPlease remove one of them.
+
+[41m[30m ELIFECYCLE [39m[49m [31mCommand failed with exit code 1.[39m

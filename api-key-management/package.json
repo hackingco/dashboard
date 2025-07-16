@@ -1,0 +1,76 @@
+{
+  "name": "langfuse-api-key-management",
+  "version": "1.0.0",
+  "description": "Comprehensive API key management system for Langfuse with validation, testing, and monitoring",
+  "type": "module",
+  "main": "LangfuseIntegration.js",
+  "bin": {
+    "langfuse-api-keys": "api-key-cli.js"
+  },
+  "scripts": {
+    "start": "node api-key-cli.js",
+    "test": "jest --config test/jest.config.js",
+    "test:unit": "jest --config test/jest.config.js --testPathPattern=unit",
+    "test:integration": "jest --config test/jest.config.js --testPathPattern=integration",
+    "test:e2e": "jest --config test/jest.config.js --testPathPattern=e2e",
+    "test:watch": "jest --config test/jest.config.js --watch",
+    "test:coverage": "jest --config test/jest.config.js --coverage",
+    "test:ci": "jest --config test/jest.config.js --ci --coverage --maxWorkers=2",
+    "validate": "node api-key-cli.js validate",
+    "status": "node api-key-cli.js status",
+    "setup": "node api-key-cli.js setup --auto",
+    "monitor": "node api-key-cli.js test --monitor",
+    "export-env": "node api-key-cli.js export --format env --output .env.langfuse",
+    "benchmark": "node PerformanceBenchmark.js",
+    "benchmark:full": "node PerformanceBenchmark.js --iterations 200 --concurrent 20 --duration 60000",
+    "performance": "node OptimizedApiKeyManager.js performance",
+    "cache:clear": "node OptimizedApiKeyManager.js clear-cache",
+    "dashboard:start": "cd dashboard && npm start",
+    "dashboard:build": "cd dashboard && npm run build"
+  },
+  "keywords": [
+    "langfuse",
+    "api-key",
+    "management",
+    "validation",
+    "testing",
+    "monitoring",
+    "observability",
+    "tracing"
+  ],
+  "author": "API Key Specialist Agent",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.0.0",
+    "cli-table3": "^0.6.0",
+    "commander": "^11.0.0",
+    "dotenv": "^17.2.0",
+    "inquirer": "^9.0.0",
+    "langfuse": "^3.0.0",
+    "node-fetch": "^3.0.0",
+    "ora": "^7.0.0",
+    "p-limit": "^5.0.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.0",
+    "@babel/preset-env": "^7.23.0",
+    "@types/node": "^20.0.0",
+    "babel-jest": "^29.0.0",
+    "jest": "^29.0.0",
+    "nodemon": "^3.0.0",
+    "playwright": "^1.40.0",
+    "wait-port": "^1.1.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-org/langfuse-api-key-management.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/langfuse-api-key-management/issues"
+  },
+  "homepage": "https://github.com/your-org/langfuse-api-key-management#readme"
+}

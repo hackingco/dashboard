@@ -1,0 +1,113 @@
+{
+  "swarmId": "hive-mind-swarm",
+  "sessionId": "instrumentation-1752503413053",
+  "agents": {
+    "agent_1752502984645_49ej94": {
+      "name": "Queen Strategic Coordinator",
+      "type": "coordinator",
+      "role": "queen",
+      "capabilities": [
+        "coordination",
+        "planning",
+        "decision-making",
+        "strategy"
+      ],
+      "priority": "critical"
+    },
+    "agent_1752502984717_ia9189": {
+      "name": "Knowledge Scout 1",
+      "type": "researcher",
+      "role": "scout",
+      "capabilities": [
+        "web-search",
+        "data-gathering",
+        "analysis",
+        "synthesis"
+      ],
+      "priority": "high"
+    },
+    "agent_1752502984789_y3bzb9": {
+      "name": "Knowledge Scout 2",
+      "type": "researcher",
+      "role": "scout",
+      "capabilities": [
+        "web-search",
+        "data-gathering",
+        "analysis",
+        "synthesis"
+      ],
+      "priority": "high"
+    },
+    "agent_1752502984871_knkbv7": {
+      "name": "Implementation Worker 1",
+      "type": "coder",
+      "role": "worker",
+      "capabilities": [
+        "code-generation",
+        "implementation",
+        "refactoring",
+        "debugging"
+      ],
+      "priority": "high"
+    },
+    "agent_1752502984958_fukrua": {
+      "name": "Implementation Worker 2",
+      "type": "coder",
+      "role": "worker",
+      "capabilities": [
+        "code-generation",
+        "implementation",
+        "refactoring",
+        "debugging"
+      ],
+      "priority": "high"
+    },
+    "agent_1752502985037_v9pe4e": {
+      "name": "Strategic Analyst",
+      "type": "analyst",
+      "role": "specialist",
+      "capabilities": [
+        "data-analysis",
+        "pattern-recognition",
+        "reporting",
+        "visualization"
+      ],
+      "priority": "medium"
+    },
+    "agent_1752502985121_98ojvl": {
+      "name": "Quality Guardian",
+      "type": "tester",
+      "role": "guardian",
+      "capabilities": [
+        "test-generation",
+        "quality-assurance",
+        "bug-detection",
+        "validation"
+      ],
+      "priority": "medium"
+    },
+    "agent_1752502985200_coordination": {
+      "name": "Coordination Specialist",
+      "type": "coordinator",
+      "role": "specialist",
+      "capabilities": [
+        "inter-agent-communication",
+        "load-balancing",
+        "fault-tolerance"
+      ],
+      "priority": "medium"
+    }
+  },
+  "loggingConfig": {
+    "enableRealTime": true,
+    "traceInterval": 10000,
+    "performanceReportInterval": 30000,
+    "batchSize": 50,
+    "flushInterval": 3000
+  },
+  "langfuseConfig": {
+    "baseUrl": "http://localhost:3001"
+  },
+  "instrumentationStarted": "2025-07-14T14:30:13.053Z",
+  "totalAgents": 8
+}

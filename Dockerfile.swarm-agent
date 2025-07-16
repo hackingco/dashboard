@@ -1,0 +1,167 @@
+# 🤖 Dockerfile for Swarm Worker Agents
+# Optimized for scalable agent deployment with multiple specializations
+
+FROM node:18-alpine AS base
+
+# Install system dependencies for development tools
+RUN apk add --no-cache \
+    git \
+    python3 \
+    make \
+    g++ \
+    curl \
+    bash \
+    sqlite \
+    openssh-client \
+    rsync \
+    vim \
+    nano \
+    && rm -rf /var/cache/apk/*
+
+WORKDIR /app
+
+# ═══════════════════════════════════════════════════════════════
+# 📦 DEPENDENCY INSTALLATION STAGE
+# ═══════════════════════════════════════════════════════════════
+
+FROM base AS deps
+
+# Copy package files
+COPY docker/swarm-agent/package*.json ./
+COPY docker/swarm-agent/pnpm-lock.yaml* ./
+
+# Install pnpm
+RUN npm install -g pnpm@latest
+
+# Install dependencies with optimization
+RUN pnpm install --frozen-lockfile --prod=false
+
+# ═══════════════════════════════════════════════════════════════
+# 🏗️ BUILD STAGE
+# ═══════════════════════════════════════════════════════════════
+
+FROM deps AS builder
+
+# Copy source code
+COPY docker/swarm-agent/src/ ./src/
+COPY docker/swarm-agent/tsconfig.json ./
+COPY docker/swarm-agent/.eslintrc.js ./
+
+# Build the application
+RUN pnpm run build
+
+# ═══════════════════════════════════════════════════════════════
+# 🚀 PRODUCTION STAGE
+# ═══════════════════════════════════════════════════════════════
+
+FROM base AS production
+
+# Create non-root user
+RUN addgroup -g 1001 -S swarm && \
+    adduser -S agent -u 1001 -G swarm
+
+# Install production dependencies only
+COPY docker/swarm-agent/package*.json ./
+RUN npm install -g pnpm@latest && \
+    pnpm install --frozen-lockfile --prod && \
+    pnpm store prune
+
+# Copy built application
+COPY --from=builder --chown=agent:swarm /app/dist ./dist
+COPY --from=builder --chown=agent:swarm /app/node_modules ./node_modules
+
+# Copy agent configurations for different types
+COPY --chown=agent:swarm docker/swarm-agent/config/ ./config/
+
+# Install development tools for agent work
+RUN npm install -g \
+    typescript \
+    ts-node \
+    eslint \
+    prettier \
+    nodemon \
+    && npm cache clean --force
+
+# Create necessary directories with proper permissions
+RUN mkdir -p \
+    logs \
+    .swarm \
+    workspace \
+    workspace/temp \
+    workspace/projects \
+    workspace/cache \
+    && chown -R agent:swarm logs .swarm workspace
+
+# Set up environment variables
+ENV NODE_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=512" \
+    AGENT_TYPE=coder \
+    LOG_LEVEL=info \
+    WORKSPACE_DIR=/app/workspace \
+    MAX_CONCURRENT_TASKS=10
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Switch to non-root user
+USER agent
+
+# Expose port for agent communication
+EXPOSE 8080
+
+# Start the agent with dynamic configuration
+CMD ["sh", "-c", "node dist/index.js --type=${AGENT_TYPE}"]
+
+# ═══════════════════════════════════════════════════════════════
+# 📋 METADATA & LABELS
+# ═══════════════════════════════════════════════════════════════
+
+LABEL maintainer="Claude Flow Swarm Team" \
+      version="2.0.0" \
+      description="Scalable Swarm Worker Agent - Multi-type agent for Claude Flow swarm" \
+      service="swarm-agent" \
+      tier="worker" \
+      capabilities="coder,researcher,analyst,tester,optimizer"
+
+# ═══════════════════════════════════════════════════════════════
+# 🎯 AGENT TYPE CONFIGURATIONS
+# ═══════════════════════════════════════════════════════════════
+
+# This image supports multiple agent types through environment variables:
+# 
+# 🧑‍💻 CODER Agent (default):
+#   AGENT_TYPE=coder
+#   Capabilities: Code generation, debugging, optimization, refactoring
+# 
+# 🔍 RESEARCHER Agent:
+#   AGENT_TYPE=researcher
+#   Capabilities: Information gathering, analysis, documentation
+# 
+# 📊 ANALYST Agent:
+#   AGENT_TYPE=analyst
+#   Capabilities: Data analysis, performance metrics, reporting
+# 
+# 🧪 TESTER Agent:
+#   AGENT_TYPE=tester
+#   Capabilities: Testing, validation, quality assurance
+# 
+# ⚡ OPTIMIZER Agent:
+#   AGENT_TYPE=optimizer
+#   Capabilities: Performance optimization, resource management
+# 
+# Usage in docker-compose.yml:
+# 
+# services:
+#   coder-agent:
+#     image: swarm-agent:latest
+#     environment:
+#       AGENT_TYPE: coder
+# 
+#   researcher-agent:
+#     image: swarm-agent:latest
+#     environment:
+#       AGENT_TYPE: researcher
+# 
+# Scale with different types:
+# docker-compose up --scale coder-agent=5 --scale researcher-agent=3

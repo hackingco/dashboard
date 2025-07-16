@@ -1,0 +1,316 @@
+version: '3.8'
+
+# Langfuse v3 Integration Module - Advanced observability with ClickHouse
+# Use with core: docker-compose -f docker-compose.swarm-core.yml -f docker-compose.langfuse.yml up
+# Langfuse v3 features: ClickHouse analytics, Worker processing, Redis queuing, S3 storage
+
+services:
+  # ClickHouse - Analytical database for traces, observations, and scores
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: swarm-clickhouse
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"  # HTTP API
+      - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"  # Native protocol for migrations
+      - "${CLICKHOUSE_MYSQL_PORT:-9004}:9004"   # MySQL compatibility
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:-default}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  # Redis - Queue management and caching for Langfuse v3
+  redis:
+    image: redis:7-alpine
+    container_name: swarm-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-swarm-redis}
+    command: redis-server --requirepass ${REDIS_PASSWORD:-swarm-redis}
+    volumes:
+      - redis-data:/data
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Langfuse Web - Main application with v3 ClickHouse integration
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: swarm-langfuse
+    ports:
+      - "${LANGFUSE_PORT:-3001}:3000"
+    environment:
+      # PostgreSQL - Primary database for application data
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres}@postgres:5432/langfuse
+      
+      # ClickHouse v3 Configuration - Analytics database
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_CLUSTER_ENABLED: false
+      CLICKHOUSE_CLUSTER_NAME: ""
+      LANGFUSE_AUTO_CLICKHOUSE_MIGRATION_DISABLED: ${CLICKHOUSE_AUTO_MIGRATION_DISABLED:-false}
+      
+      # Redis Configuration - Queue and cache
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${REDIS_PASSWORD:-swarm-redis}
+      
+      # S3/Blob Storage Configuration (optional but recommended)
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-langfuse-storage}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      
+      # Authentication & Security
+      NEXTAUTH_URL: ${LANGFUSE_URL:-http://localhost:3001}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-your-secret-key-min-32-chars-long}
+      SALT: ${LANGFUSE_SALT:-your-salt-min-32-chars-long}
+      
+      # Langfuse v3 Configuration
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_EXPERIMENTAL:-true}
+      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
+      LANGFUSE_V3_ENABLED: true
+      
+      # Performance & Scaling (v3 optimized)
+      LANGFUSE_CACHE_TTL: ${LANGFUSE_CACHE_TTL:-3600}
+      LANGFUSE_MAX_INGESTION_BATCH_SIZE: ${LANGFUSE_BATCH_SIZE:-2000}
+      LANGFUSE_INGESTION_FLUSH_INTERVAL: ${LANGFUSE_FLUSH_INTERVAL:-3000}
+      LANGFUSE_WORKER_ENABLED: true
+      
+      # Integration settings
+      NEXTAUTH_PROVIDERS: ${LANGFUSE_AUTH_PROVIDERS:-credentials}
+      
+      # Security Headers
+      NEXT_PUBLIC_SECURE_HEADERS: ${LANGFUSE_SECURE_HEADERS:-true}
+      
+    volumes:
+      - langfuse-data:/app/.next/cache
+      - langfuse-uploads:/app/uploads
+    networks:
+      - swarm-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Langfuse Worker v3 - Background processing for high-throughput event ingestion
+  langfuse-worker:
+    image: langfuse/langfuse:latest
+    container_name: swarm-langfuse-worker
+    environment:
+      # PostgreSQL - Primary database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres}@postgres:5432/langfuse
+      
+      # ClickHouse v3 Configuration
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_CLUSTER_ENABLED: false
+      CLICKHOUSE_CLUSTER_NAME: ""
+      
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${REDIS_PASSWORD:-swarm-redis}
+      
+      # S3/Blob Storage Configuration
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-langfuse-storage}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      
+      # Worker v3 Configuration
+      LANGFUSE_WORKER_ENABLED: true
+      WORKER_CONCURRENCY: ${LANGFUSE_WORKER_CONCURRENCY:-10}
+      
+      # v3 Processing configuration
+      LANGFUSE_CACHE_TTL: ${LANGFUSE_CACHE_TTL:-3600}
+      LANGFUSE_MAX_INGESTION_BATCH_SIZE: ${LANGFUSE_BATCH_SIZE:-5000}
+      LANGFUSE_INGESTION_FLUSH_INTERVAL: ${LANGFUSE_FLUSH_INTERVAL:-2000}
+      
+      # Security
+      SALT: ${LANGFUSE_SALT:-your-salt-min-32-chars-long}
+      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
+      
+    volumes:
+      - langfuse-worker-data:/app/.next/cache
+    networks:
+      - swarm-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      langfuse:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: ${LANGFUSE_WORKER_REPLICAS:-2}
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    profiles:
+      - scaling
+
+  # Langfuse Ingestion API v3 - Ultra high-throughput trace ingestion with ClickHouse
+  langfuse-ingestion:
+    image: langfuse/langfuse:latest
+    container_name: swarm-langfuse-ingestion
+    ports:
+      - "${LANGFUSE_INGESTION_PORT:-3002}:3000"
+    environment:
+      # PostgreSQL - Primary database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-swarm-postgres}@postgres:5432/langfuse
+      
+      # ClickHouse v3 Configuration
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+      
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${REDIS_PASSWORD:-swarm-redis}
+      
+      # S3/Blob Storage Configuration
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-langfuse-storage}
+      
+      # v3 Ingestion-specific mode
+      LANGFUSE_INGESTION_ENABLED: true
+      
+      # v3 High-throughput configuration
+      LANGFUSE_MAX_INGESTION_BATCH_SIZE: ${LANGFUSE_BATCH_SIZE:-10000}
+      LANGFUSE_INGESTION_FLUSH_INTERVAL: ${LANGFUSE_FLUSH_INTERVAL:-1000}
+      LANGFUSE_INGESTION_WORKERS: ${LANGFUSE_INGESTION_WORKERS:-20}
+      
+      # Security
+      SALT: ${LANGFUSE_SALT:-your-salt-min-32-chars-long}
+      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
+      
+      # v3 Performance optimization
+      NODE_OPTIONS: "--max-old-space-size=4096"
+      
+    networks:
+      - swarm-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      replicas: ${LANGFUSE_INGESTION_REPLICAS:-3}
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    profiles:
+      - high-performance
+
+volumes:
+  # Langfuse application volumes
+  langfuse-data:
+    name: swarm-langfuse-data
+    driver: local
+  langfuse-uploads:
+    name: swarm-langfuse-uploads
+    driver: local
+  langfuse-worker-data:
+    name: swarm-langfuse-worker-data
+    driver: local
+  
+  # ClickHouse v3 volumes
+  clickhouse-data:
+    name: swarm-clickhouse-data
+    driver: local
+  clickhouse-logs:
+    name: swarm-clickhouse-logs
+    driver: local
+  
+  # Redis volumes
+  redis-data:
+    name: swarm-redis-data
+    driver: local

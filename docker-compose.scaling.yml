@@ -1,0 +1,299 @@
+version: '3.8'
+
+# Scaling Configuration - High-performance multi-replica setup
+# Use with: docker-compose -f docker-compose.swarm-core.yml -f docker-compose.claude-flow-services.yml -f docker-compose.scaling.yml up
+
+services:
+  # Redis Cluster for high availability
+  redis-master:
+    image: redis:7-alpine
+    container_name: swarm-redis-master
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-master-data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD:-swarm-redis}
+      --maxmemory ${REDIS_MAX_MEMORY:-1g}
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    networks:
+      - swarm-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1.5G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  redis-replica-1:
+    image: redis:7-alpine
+    container_name: swarm-redis-replica-1
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-replica-1-data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD:-swarm-redis}
+      --replicaof redis-master 6379
+      --masterauth ${REDIS_PASSWORD:-swarm-redis}
+    networks:
+      - swarm-network
+    depends_on:
+      - redis-master
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  redis-replica-2:
+    image: redis:7-alpine
+    container_name: swarm-redis-replica-2
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis-replica-2-data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD:-swarm-redis}
+      --replicaof redis-master 6379
+      --masterauth ${REDIS_PASSWORD:-swarm-redis}
+    networks:
+      - swarm-network
+    depends_on:
+      - redis-master
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Postgres with read replicas
+  postgres-master:
+    image: postgres:15-alpine
+    container_name: swarm-postgres-master
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-swarm-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-swarm_core}
+      POSTGRES_REPLICATION_USER: ${POSTGRES_REPLICATION_USER:-replicator}
+      POSTGRES_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD:-replicator-password}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-master-data:/var/lib/postgresql/data
+      - ./scripts/postgres/master-setup.sql:/docker-entrypoint-initdb.d/master-setup.sql:ro
+    command: >
+      postgres
+      -c wal_level=replica
+      -c max_wal_senders=3
+      -c max_replication_slots=3
+      -c hot_standby=on
+      -c shared_preload_libraries=pg_stat_statements
+    networks:
+      - swarm-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # Multiple Manager instances with load balancing
+  manager-1:
+    extends:
+      service: manager
+    container_name: swarm-manager-1
+    ports:
+      - "8080:8080"
+    environment:
+      INSTANCE_ID: manager-1
+      CLUSTER_MODE: true
+      LOAD_BALANCER_ENABLED: true
+
+  manager-2:
+    extends:
+      service: manager
+    container_name: swarm-manager-2
+    ports:
+      - "8081:8080"
+    environment:
+      INSTANCE_ID: manager-2
+      CLUSTER_MODE: true
+      LOAD_BALANCER_ENABLED: true
+
+  manager-3:
+    extends:
+      service: manager
+    container_name: swarm-manager-3
+    ports:
+      - "8082:8080"
+    environment:
+      INSTANCE_ID: manager-3
+      CLUSTER_MODE: true
+      LOAD_BALANCER_ENABLED: true
+
+  # Scaled Worker instances
+  worker-1:
+    extends:
+      service: worker
+    container_name: swarm-worker-1
+    environment:
+      WORKER_NAME: worker-1
+      WORKER_ID: 1
+
+  worker-2:
+    extends:
+      service: worker
+    container_name: swarm-worker-2
+    environment:
+      WORKER_NAME: worker-2
+      WORKER_ID: 2
+
+  worker-3:
+    extends:
+      service: worker
+    container_name: swarm-worker-3
+    environment:
+      WORKER_NAME: worker-3
+      WORKER_ID: 3
+
+  worker-4:
+    extends:
+      service: worker
+    container_name: swarm-worker-4
+    environment:
+      WORKER_NAME: worker-4
+      WORKER_ID: 4
+
+  # HAProxy Load Balancer
+  load-balancer:
+    image: haproxy:alpine
+    container_name: swarm-load-balancer
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8404:8404"  # HAProxy stats
+    volumes:
+      - ./config/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./config/haproxy/ssl:/etc/ssl/certs:ro
+    networks:
+      - swarm-network
+    depends_on:
+      - manager-1
+      - manager-2
+      - manager-3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Redis Sentinel for failover
+  redis-sentinel-1:
+    image: redis:7-alpine
+    container_name: swarm-redis-sentinel-1
+    ports:
+      - "26379:26379"
+    volumes:
+      - ./config/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    command: redis-sentinel /etc/redis/sentinel.conf
+    networks:
+      - swarm-network
+    depends_on:
+      - redis-master
+    restart: unless-stopped
+
+  redis-sentinel-2:
+    image: redis:7-alpine
+    container_name: swarm-redis-sentinel-2
+    ports:
+      - "26380:26379"
+    volumes:
+      - ./config/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    command: redis-sentinel /etc/redis/sentinel.conf
+    networks:
+      - swarm-network
+    depends_on:
+      - redis-master
+    restart: unless-stopped
+
+  redis-sentinel-3:
+    image: redis:7-alpine
+    container_name: swarm-redis-sentinel-3
+    ports:
+      - "26381:26379"
+    volumes:
+      - ./config/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    command: redis-sentinel /etc/redis/sentinel.conf
+    networks:
+      - swarm-network
+    depends_on:
+      - redis-master
+    restart: unless-stopped
+
+  # Consul for service discovery
+  consul:
+    image: consul:latest
+    container_name: swarm-consul
+    ports:
+      - "8500:8500"
+      - "8600:8600/udp"
+    environment:
+      CONSUL_BIND_INTERFACE: eth0
+    command: >
+      consul agent
+      -server
+      -bootstrap-expect=1
+      -ui
+      -client=0.0.0.0
+      -bind=0.0.0.0
+    volumes:
+      - consul-data:/consul/data
+    networks:
+      - swarm-network
+    restart: unless-stopped
+
+volumes:
+  redis-master-data:
+    name: swarm-redis-master-data
+    driver: local
+  redis-replica-1-data:
+    name: swarm-redis-replica-1-data
+    driver: local
+  redis-replica-2-data:
+    name: swarm-redis-replica-2-data
+    driver: local
+  postgres-master-data:
+    name: swarm-postgres-master-data
+    driver: local
+  consul-data:
+    name: swarm-consul-data
+    driver: local

@@ -1,0 +1,167 @@
+# Prometheus Configuration for Claude Flow
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'claude-flow'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "rules/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  # Claude Flow Application
+  - job_name: 'claude-flow'
+    static_configs:
+      - targets: ['claude-flow-app:8080']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    scrape_timeout: 10s
+    honor_labels: true
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'claude-flow'
+
+  # Langfuse Metrics
+  - job_name: 'langfuse'
+    static_configs:
+      - targets: ['langfuse-server:3000']
+    scrape_interval: 30s
+    metrics_path: '/api/metrics'
+    scrape_timeout: 10s
+
+  # Redis Metrics
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-primary:6379']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  # PostgreSQL Metrics (via postgres_exporter)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+
+  # ClickHouse Metrics
+  - job_name: 'clickhouse'
+    static_configs:
+      - targets: ['clickhouse-cluster:8123']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  # Node Exporter (System Metrics)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
+
+  # Docker Metrics (if using Docker)
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['host.docker.internal:9323']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  # NGINX Metrics
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx-lb:9113']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  # Backup Service Metrics
+  - job_name: 'backup-service'
+    static_configs:
+      - targets: ['backup-service:9090']
+    scrape_interval: 60s
+    metrics_path: '/metrics'
+
+  # Kubernetes API Server (if using Kubernetes)
+  - job_name: 'kubernetes-apiservers'
+    kubernetes_sd_configs:
+      - role: endpoints
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: default;kubernetes;https
+
+  # Kubernetes Nodes (if using Kubernetes)
+  - job_name: 'kubernetes-nodes'
+    kubernetes_sd_configs:
+      - role: node
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics
+
+  # Kubernetes Pods (if using Kubernetes)
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name
+
+# Remote write configuration (for long-term storage)
+remote_write:
+  - url: "http://victoria-metrics:8428/api/v1/write"
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'go_.*|process_.*|promhttp_.*'
+        action: drop
+
+# Storage configuration
+storage:
+  tsdb:
+    path: /prometheus/data
+    retention.time: 15d
+    retention.size: 10GB

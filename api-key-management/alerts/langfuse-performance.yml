@@ -1,0 +1,300 @@
+groups:
+  - name: langfuse_key_validation
+    interval: 30s
+    rules:
+      # Key validation performance alerts
+      - alert: HighKeyValidationLatency
+        expr: histogram_quantile(0.95, rate(langfuse_key_validation_duration_ms_bucket[5m])) > 1000
+        for: 2m
+        labels:
+          severity: warning
+          component: key_validation
+          team: platform
+        annotations:
+          summary: "High key validation latency detected"
+          description: "95th percentile key validation latency is {{ $value }}ms (threshold: 1000ms)"
+          runbook_url: "https://docs.example.com/runbooks/high-key-validation-latency"
+          
+      - alert: VeryHighKeyValidationLatency
+        expr: histogram_quantile(0.99, rate(langfuse_key_validation_duration_ms_bucket[5m])) > 5000
+        for: 1m
+        labels:
+          severity: critical
+          component: key_validation
+          team: platform
+        annotations:
+          summary: "Critical key validation latency"
+          description: "99th percentile key validation latency is {{ $value }}ms (threshold: 5000ms)"
+          
+      # Error rate alerts
+      - alert: HighKeyValidationErrorRate
+        expr: |
+          (
+            sum(rate(langfuse_key_validation_errors_total[5m])) /
+            sum(rate(langfuse_key_validation_duration_ms_count[5m]))
+          ) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          component: key_validation
+          team: platform
+        annotations:
+          summary: "High key validation error rate"
+          description: "Key validation error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+          
+      - alert: CriticalKeyValidationErrorRate
+        expr: |
+          (
+            sum(rate(langfuse_key_validation_errors_total[5m])) /
+            sum(rate(langfuse_key_validation_duration_ms_count[5m]))
+          ) > 0.20
+        for: 1m
+        labels:
+          severity: critical
+          component: key_validation
+          team: platform
+          page: true
+        annotations:
+          summary: "Critical key validation error rate"
+          description: "Key validation error rate is {{ $value | humanizePercentage }} (threshold: 20%)"
+
+  - name: langfuse_stress_testing
+    interval: 30s
+    rules:
+      # Throughput alerts
+      - alert: LowStressTestThroughput
+        expr: langfuse_stress_test_throughput_tps < 100
+        for: 5m
+        labels:
+          severity: warning
+          component: stress_test
+          team: performance
+        annotations:
+          summary: "Low stress test throughput"
+          description: "Stress test throughput is {{ $value }} TPS (threshold: 100 TPS)"
+          
+      - alert: StressTestThroughputDegradation
+        expr: |
+          (
+            langfuse_stress_test_throughput_tps /
+            avg_over_time(langfuse_stress_test_throughput_tps[1h] offset 1d)
+          ) < 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: stress_test
+          team: performance
+        annotations:
+          summary: "Stress test throughput degradation"
+          description: "Throughput degraded by {{ $value | humanizePercentage }} compared to yesterday"
+          
+      # Concurrent traces alerts
+      - alert: HighConcurrentTraceFailures
+        expr: |
+          (
+            langfuse_stress_test_failed_traces /
+            langfuse_stress_test_concurrent_traces
+          ) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          component: stress_test
+          team: performance
+        annotations:
+          summary: "High concurrent trace failure rate"
+          description: "{{ $value | humanizePercentage }} of concurrent traces are failing"
+
+  - name: langfuse_api_performance
+    interval: 15s
+    rules:
+      # API latency alerts
+      - alert: HighAPILatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(langfuse_api_request_duration_ms_bucket[5m])) by (endpoint, le)
+          ) > 2000
+        for: 3m
+        labels:
+          severity: warning
+          component: api
+          team: backend
+        annotations:
+          summary: "High API latency on {{ $labels.endpoint }}"
+          description: "95th percentile latency is {{ $value }}ms for endpoint {{ $labels.endpoint }}"
+          
+      - alert: APILatencySLOViolation
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(langfuse_api_request_duration_ms_bucket[5m])) by (endpoint, le)
+          ) > 5000
+        for: 2m
+        labels:
+          severity: critical
+          component: api
+          team: backend
+          slo: true
+        annotations:
+          summary: "API latency SLO violation on {{ $labels.endpoint }}"
+          description: "99th percentile latency is {{ $value }}ms, violating SLO of 5000ms"
+          
+      # API error rate alerts
+      - alert: HighAPIErrorRate
+        expr: |
+          sum(rate(langfuse_api_request_duration_ms_count{status=~"5.."}[5m])) by (endpoint) /
+          sum(rate(langfuse_api_request_duration_ms_count[5m])) by (endpoint) > 0.01
+        for: 3m
+        labels:
+          severity: warning
+          component: api
+          team: backend
+        annotations:
+          summary: "High API error rate on {{ $labels.endpoint }}"
+          description: "Error rate is {{ $value | humanizePercentage }} for endpoint {{ $labels.endpoint }}"
+
+  - name: langfuse_resource_usage
+    interval: 30s
+    rules:
+      # Memory alerts
+      - alert: HighMemoryUsage
+        expr: langfuse_memory_usage_mb{type="heap"} > 1024
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+          team: platform
+        annotations:
+          summary: "High memory usage detected"
+          description: "Heap memory usage is {{ $value }}MB (threshold: 1024MB)"
+          
+      - alert: MemoryLeak
+        expr: |
+          predict_linear(langfuse_memory_usage_mb{type="heap"}[1h], 3600) > 2048
+        for: 10m
+        labels:
+          severity: critical
+          component: system
+          team: platform
+        annotations:
+          summary: "Potential memory leak detected"
+          description: "Memory usage predicted to reach {{ $value }}MB in 1 hour"
+          
+      # CPU alerts
+      - alert: HighCPUUsage
+        expr: langfuse_cpu_usage_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+          team: platform
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}% (threshold: 80%)"
+          
+      # Connection pool alerts
+      - alert: ConnectionPoolExhaustion
+        expr: |
+          langfuse_connection_pool_active /
+          langfuse_connection_pool_max > 0.9
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+          team: backend
+        annotations:
+          summary: "Database connection pool near exhaustion"
+          description: "{{ $value | humanizePercentage }} of connection pool is in use"
+
+  - name: langfuse_regression_detection
+    interval: 1m
+    rules:
+      # Performance regression alerts
+      - alert: PerformanceRegression
+        expr: |
+          (
+            avg_over_time(langfuse_key_validation_duration_ms[10m]) /
+            avg_over_time(langfuse_key_validation_duration_ms[10m] offset 1h)
+          ) > 1.2
+        for: 15m
+        labels:
+          severity: warning
+          component: performance
+          team: performance
+        annotations:
+          summary: "Performance regression detected"
+          description: "Average latency increased by {{ $value | humanizePercentage }} compared to 1 hour ago"
+          
+      - alert: ThroughputRegression
+        expr: |
+          (
+            avg_over_time(langfuse_stress_test_throughput_tps[10m]) /
+            avg_over_time(langfuse_stress_test_throughput_tps[10m] offset 1h)
+          ) < 0.8
+        for: 15m
+        labels:
+          severity: warning
+          component: performance
+          team: performance
+        annotations:
+          summary: "Throughput regression detected"
+          description: "Throughput decreased by {{ $value | humanizePercentage }} compared to 1 hour ago"
+
+  - name: langfuse_integration_health
+    interval: 1m
+    rules:
+      # Integration test failures
+      - alert: IntegrationTestFailure
+        expr: langfuse_integration_test_passed == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: integration
+          team: platform
+        annotations:
+          summary: "Integration test failing for {{ $labels.integration_type }}"
+          description: "Integration test has been failing for 5 minutes"
+          
+      # Real-time streaming health
+      - alert: RealtimeStreamingDown
+        expr: up{job="langfuse-websocket"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: streaming
+          team: backend
+        annotations:
+          summary: "Real-time streaming service is down"
+          description: "WebSocket streaming service has been down for 2 minutes"
+
+  - name: langfuse_business_metrics
+    interval: 1m
+    rules:
+      # SLO violations
+      - alert: MonthlySLOBudgetExhausted
+        expr: |
+          (
+            1 - (
+              sum(rate(langfuse_api_request_duration_ms_count{status!~"5.."}[30d])) /
+              sum(rate(langfuse_api_request_duration_ms_count[30d]))
+            )
+          ) > 0.001  # 99.9% SLO
+        labels:
+          severity: critical
+          component: slo
+          team: platform
+          executive: true
+        annotations:
+          summary: "Monthly SLO budget exhausted"
+          description: "Error rate of {{ $value | humanizePercentage }} exceeds monthly SLO budget"
+          
+      # Availability alerts
+      - alert: ServiceUnavailable
+        expr: up{job=~"langfuse.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: availability
+          team: platform
+          page: true
+        annotations:
+          summary: "{{ $labels.job }} service is down"
+          description: "Service {{ $labels.job }} has been down for 1 minute"

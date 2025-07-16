@@ -1,0 +1,105 @@
+{
+  "timestamp": "2025-07-13T21:15:23.887Z",
+  "tests": [
+    {
+      "name": "Langfuse Wrapper Exists",
+      "result": {
+        "status": "passed",
+        "features": {
+          "hasLangfuseClass": true,
+          "hasPreHook": true,
+          "hasPostHook": true,
+          "hasErrorHook": true
+        }
+      }
+    },
+    {
+      "name": "Hook Integration",
+      "result": {
+        "status": "passed",
+        "features": {
+          "hasHookTracer": true,
+          "hasTraceHook": false
+        }
+      }
+    },
+    {
+      "name": "Swarm Tracer",
+      "result": {
+        "status": "passed",
+        "features": {
+          "hasSwarmTracer": true,
+          "hasAgentTrace": true,
+          "hasCoordination": true
+        }
+      }
+    },
+    {
+      "name": "Real-Time Observer",
+      "result": {
+        "status": "passed",
+        "features": {
+          "hasObserver": true,
+          "hasMetrics": true,
+          "hasWebSocket": true
+        }
+      }
+    },
+    {
+      "name": "Configuration",
+      "result": {
+        "status": "passed",
+        "features": {
+          "hasConfig": true,
+          "hasEnvVars": true
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "test": "wrapper-exists",
+      "file": "/Users/shaight/claude-projects/swarm03/shared/langfuse-wrapper/src/index.ts",
+      "features": {
+        "hasLangfuseClass": true,
+        "hasPreHook": true,
+        "hasPostHook": true,
+        "hasErrorHook": true
+      }
+    },
+    {
+      "test": "hook-integration",
+      "file": "/Users/shaight/claude-projects/swarm03/shared/langfuse-wrapper/src/hook-tracer.ts",
+      "features": {
+        "hasHookTracer": true,
+        "hasTraceHook": false
+      }
+    },
+    {
+      "test": "swarm-tracer",
+      "file": "/Users/shaight/claude-projects/swarm03/shared/langfuse-wrapper/src/swarm-tracer.ts",
+      "features": {
+        "hasSwarmTracer": true,
+        "hasAgentTrace": true,
+        "hasCoordination": true
+      }
+    },
+    {
+      "test": "real-time-observer",
+      "file": "/Users/shaight/claude-projects/swarm03/shared/langfuse-wrapper/src/real-time-observer.ts",
+      "features": {
+        "hasObserver": true,
+        "hasMetrics": true,
+        "hasWebSocket": true
+      }
+    },
+    {
+      "test": "configuration",
+      "file": "/Users/shaight/claude-projects/swarm03/shared/langfuse-wrapper/src/config.ts",
+      "features": {
+        "hasConfig": true,
+        "hasEnvVars": true
+      }
+    }
+  ]
+}

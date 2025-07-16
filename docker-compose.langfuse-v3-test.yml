@@ -1,0 +1,115 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_root_password_2025
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-postgres.sql:/docker-entrypoint-initdb.d/01-init-langfuse.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres && psql -U postgres -d langfuse -c 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass production_secure_redis_2025
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ClickHouse for Langfuse v3 (Single Node Configuration)
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./config/clickhouse/config.xml:/etc/clickhouse-server/config.xml:ro
+      - ./config/clickhouse/users.xml:/etc/clickhouse-server/users.xml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Langfuse v3 - Fixed Configuration (No Clustering)
+  langfuse:
+    image: langfuse/langfuse:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      # Database - PostgreSQL
+      DATABASE_URL: postgresql://langfuse:production_secure_langfuse_2025@postgres:5432/langfuse
+      DIRECT_URL: postgresql://langfuse:production_secure_langfuse_2025@postgres:5432/langfuse
+      
+      # ClickHouse - Single Node Configuration (No Clustering)
+      CLICKHOUSE_URL: http://clickhouse:8123?database=default
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000/default?disable_clustering=true
+      
+      # Redis
+      REDIS_URL: redis://:production_secure_redis_2025@redis:6379
+      
+      # Core Langfuse settings
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: production_nextauth_secret_2025_secure_key_very_long_string_64chars_minimum
+      SALT: production_salt_2025_secure_key_minimum_32_characters_long_string
+      ENCRYPTION_KEY: abcdefghijklmnop1234567890123456
+      
+      # Telemetry
+      LANGFUSE_TELEMETRY_ENABLED: "false"
+      
+      # Node settings
+      NODE_ENV: production
+      
+      # Feature flags
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+      
+      # ClickHouse specific settings
+      LANGFUSE_CLICKHOUSE_CLUSTER_ENABLED: "false"
+      
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  postgres_data:
+  redis_data:
+  clickhouse_data:
+
+networks:
+  default:
+    name: swarm-langfuse-v3-test

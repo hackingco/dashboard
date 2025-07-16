@@ -1,0 +1,319 @@
+# Swarm Orchestration Configuration
+# Multi-agent coordination in Docker environment
+
+version: '3.8'
+
+# =============================================================================
+# SWARM ORCHESTRATION STACK
+# =============================================================================
+
+services:
+  # Swarm Coordinator - Central command and control
+  swarm-coordinator:
+    image: swarm-coordinator:latest
+    container_name: swarm-coordinator
+    ports:
+      - "8090:8090"  # Coordinator API
+      - "8091:8091"  # WebSocket coordination
+    environment:
+      - NODE_ENV=production
+      - COORDINATOR_PORT=8090
+      - WS_PORT=8091
+      - REDIS_URL=redis://redis:6379
+      - MAX_AGENTS=${MAX_AGENTS:-12}
+      - COORDINATION_STRATEGY=${COORDINATION_STRATEGY:-hierarchical}
+      - AUTO_SCALING_ENABLED=${AUTO_SCALING:-true}
+      - HEALTH_CHECK_INTERVAL=10s
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+    volumes:
+      - swarm-logs:/var/log/swarm
+      - swarm-config:/etc/swarm
+      - ./config/coordinator:/app/config
+    networks:
+      - swarm-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Agent Pool Manager - Spawns and manages agent instances
+  agent-pool-manager:
+    image: agent-pool-manager:latest
+    container_name: agent-pool-manager
+    ports:
+      - "8092:8092"
+    environment:
+      - NODE_ENV=production
+      - POOL_MANAGER_PORT=8092
+      - COORDINATOR_URL=http://swarm-coordinator:8090
+      - REDIS_URL=redis://redis:6379
+      - MIN_AGENTS=${MIN_AGENTS:-3}
+      - MAX_AGENTS=${MAX_AGENTS:-12}
+      - SCALING_THRESHOLD_CPU=70
+      - SCALING_THRESHOLD_MEMORY=80
+      - AGENT_TYPES=researcher,coder,analyst,tester,coordinator,optimizer
+      - SPAWN_TIMEOUT=30s
+      - HEALTH_CHECK_AGENTS=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - swarm-logs:/var/log/swarm
+      - ./config/agents:/app/config
+    networks:
+      - swarm-network
+    depends_on:
+      swarm-coordinator:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8092/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # Load Balancer - Distributes tasks across agents
+  swarm-load-balancer:
+    image: nginx:alpine
+    container_name: swarm-load-balancer
+    ports:
+      - "8080:80"  # Main swarm API gateway
+    volumes:
+      - ./config/nginx/swarm-lb.conf:/etc/nginx/nginx.conf:ro
+      - swarm-logs:/var/log/nginx
+    networks:
+      - swarm-network
+    depends_on:
+      - swarm-coordinator
+      - agent-pool-manager
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Metrics Collector - Gathers performance data
+  swarm-metrics:
+    image: prom/prometheus:latest
+    container_name: swarm-metrics
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus-swarm.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+    networks:
+      - swarm-network
+    restart: unless-stopped
+
+  # Grafana Dashboard - Visual monitoring
+  swarm-dashboard:
+    image: grafana/grafana:latest
+    container_name: swarm-dashboard
+    ports:
+      - "3001:3000"  # Avoid conflict with main dashboard
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-swarm123}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=redis-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - swarm-network
+    depends_on:
+      - swarm-metrics
+    restart: unless-stopped
+
+  # Auto-Scaler Service - Manages agent scaling
+  swarm-auto-scaler:
+    image: swarm-auto-scaler:latest
+    container_name: swarm-auto-scaler
+    environment:
+      - NODE_ENV=production
+      - COORDINATOR_URL=http://swarm-coordinator:8090
+      - POOL_MANAGER_URL=http://agent-pool-manager:8092
+      - METRICS_URL=http://swarm-metrics:9090
+      - REDIS_URL=redis://redis:6379
+      - SCALING_INTERVAL=30s
+      - CPU_SCALE_UP_THRESHOLD=75
+      - CPU_SCALE_DOWN_THRESHOLD=25
+      - MEMORY_SCALE_UP_THRESHOLD=80
+      - MEMORY_SCALE_DOWN_THRESHOLD=30
+      - TASK_QUEUE_THRESHOLD=10
+      - COOLDOWN_PERIOD=300s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - swarm-logs:/var/log/swarm
+    networks:
+      - swarm-network
+    depends_on:
+      swarm-coordinator:
+        condition: service_healthy
+      agent-pool-manager:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8093/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Health Monitor - Continuous health checking
+  swarm-health-monitor:
+    image: swarm-health-monitor:latest
+    container_name: swarm-health-monitor
+    environment:
+      - NODE_ENV=production
+      - COORDINATOR_URL=http://swarm-coordinator:8090
+      - POOL_MANAGER_URL=http://agent-pool-manager:8092
+      - REDIS_URL=redis://redis:6379
+      - CHECK_INTERVAL=15s
+      - RESTART_UNHEALTHY_AGENTS=true
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - swarm-logs:/var/log/swarm
+    networks:
+      - swarm-network
+    depends_on:
+      swarm-coordinator:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Redis for coordination and state management
+  redis:
+    image: redis:7-alpine
+    container_name: swarm-redis
+    ports:
+      - "6380:6379"  # Avoid conflict with main redis
+    volumes:
+      - redis-swarm-data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+# =============================================================================
+# AGENT SERVICES (Dynamically scaled)
+# =============================================================================
+
+  # Research Agent Template
+  swarm-agent-researcher:
+    image: swarm-agent:latest
+    environment:
+      - AGENT_TYPE=researcher
+      - AGENT_ID=${AGENT_ID:-researcher-001}
+      - COORDINATOR_URL=http://swarm-coordinator:8090
+      - REDIS_URL=redis://redis:6379
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST}
+      - MAX_CONCURRENT_TASKS=5
+      - TASK_TIMEOUT=300s
+    networks:
+      - swarm-network
+    depends_on:
+      swarm-coordinator:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 0  # Scaled by auto-scaler
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+
+  # Coder Agent Template
+  swarm-agent-coder:
+    image: swarm-agent:latest
+    environment:
+      - AGENT_TYPE=coder
+      - AGENT_ID=${AGENT_ID:-coder-001}
+      - COORDINATOR_URL=http://swarm-coordinator:8090
+      - REDIS_URL=redis://redis:6379
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST}
+      - MAX_CONCURRENT_TASKS=3
+      - TASK_TIMEOUT=600s
+    networks:
+      - swarm-network
+    depends_on:
+      swarm-coordinator:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 0  # Scaled by auto-scaler
+
+# =============================================================================
+# NETWORKING AND VOLUMES
+# =============================================================================
+
+networks:
+  swarm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+
+volumes:
+  redis-swarm-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  swarm-logs:
+    driver: local
+  swarm-config:
+    driver: local
+
+# =============================================================================
+# ENVIRONMENT VARIABLES
+# =============================================================================
+# Create .env file with:
+# MAX_AGENTS=12
+# MIN_AGENTS=3
+# COORDINATION_STRATEGY=hierarchical
+# AUTO_SCALING=true
+# GRAFANA_PASSWORD=secure-password
+# LANGFUSE_PUBLIC_KEY=your-key
+# LANGFUSE_SECRET_KEY=your-secret
+# LANGFUSE_HOST=https://us.cloud.langfuse.com
+# ALERT_WEBHOOK_URL=your-alert-url
+# SLACK_WEBHOOK_URL=your-slack-webhook

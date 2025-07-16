@@ -10,6 +10,7 @@ export { MemoryStore } from './memory/store.js';
 export { DatabaseManager } from './db/manager.js';
 export { AgentCoordinator } from './agents/coordinator.js';
 export { TaskScheduler } from './agents/scheduler.js';
+export { TracingManager, TracingConfig, LangfuseClient, Instrumentation, tracing } from './tracing/index.js';
 export * from './utils/index.js';
 
 // Version info
@@ -37,5 +38,15 @@ export const DEFAULT_CONFIG = {
     enableAutoFormat: true,
     enableTelemetry: true,
     enablePerformanceTracking: true
+  },
+  tracing: {
+    enabled: true,
+    instrumentMCP: true,
+    instrumentSwarm: true,
+    instrumentHooks: true,
+    instrumentMemory: true,
+    sampleRate: 1.0,
+    flushAt: 10,
+    flushInterval: 1000
   }
 };

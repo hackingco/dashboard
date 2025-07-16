@@ -1,0 +1,266 @@
+version: '3.8'
+
+# This docker-compose file includes full claude-flow stack with Langfuse integration
+services:
+  # Redis for caching and pub/sub
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-claude-flow-redis}
+    networks:
+      - claude-flow-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-claude-flow-redis}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # PostgreSQL for persistence
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-claude_flow}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - claude-flow-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Langfuse Tracing Service
+  langfuse:
+    image: langfuse/langfuse:latest
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/langfuse
+      NEXTAUTH_URL: ${LANGFUSE_URL:-http://localhost:3001}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-your-secret-key-min-32-chars-long}
+      SALT: ${LANGFUSE_SALT:-your-salt-min-32-chars-long}
+      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_EXPERIMENTAL:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - claude-flow-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # Manager API Service
+  manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.claude-flow
+      target: manager
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 8080
+      REDIS_URL: redis://:${REDIS_PASSWORD:-claude-flow-redis}@redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-claude_flow}
+      JWT_SECRET: ${JWT_SECRET:-your-jwt-secret-min-32-chars}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://dashboard:3000}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-900000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+    volumes:
+      - ./apps/manager/config:/app/config:ro
+      - manager-logs:/app/logs
+    networks:
+      - claude-flow-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      langfuse:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Dashboard UI Service
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.claude-flow
+      target: dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:8080}
+      NEXT_PUBLIC_WS_URL: ${WS_URL:-ws://localhost:8080}
+      NEXT_PUBLIC_LANGFUSE_URL: ${LANGFUSE_URL:-http://localhost:3001}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+    volumes:
+      - dashboard-cache:/app/.next/cache
+    networks:
+      - claude-flow-network
+    depends_on:
+      manager:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Worker Service (Multiple instances can be scaled)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.claude-flow
+      target: worker
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-claude-flow-redis}@redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-claude_flow}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      WORKER_NAME: ${WORKER_NAME:-worker-1}
+    volumes:
+      - worker-data:/app/.swarm
+      - hive-mind-data:/app/.hive-mind
+    networks:
+      - claude-flow-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: ${WORKER_REPLICAS:-2}
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Swarm Agent Generator (Produces traces for Langfuse)
+  swarm-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.all-in-one-swarm
+    ports:
+      - "8888:8888"
+    environment:
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: langfuse
+      LANGFUSE_PORT: 3000
+    networks:
+      - claude-flow-network
+    depends_on:
+      langfuse:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8888"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # NGINX Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx-logs:/var/log/nginx
+    networks:
+      - claude-flow-network
+    depends_on:
+      - manager
+      - dashboard
+      - langfuse
+    restart: unless-stopped
+
+  # Monitoring Stack - Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - claude-flow-network
+    restart: unless-stopped
+
+  # Monitoring Stack - Grafana
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - claude-flow-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+networks:
+  claude-flow-network:
+    driver: bridge
+    name: claude-flow-network
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  redis-data:
+    name: claude-flow-redis-data
+  postgres-data:
+    name: claude-flow-postgres-data
+  manager-logs:
+    name: claude-flow-manager-logs
+  dashboard-cache:
+    name: claude-flow-dashboard-cache
+  worker-data:
+    name: claude-flow-worker-data
+  hive-mind-data:
+    name: claude-flow-hive-mind-data
+  nginx-logs:
+    name: claude-flow-nginx-logs
+  prometheus-data:
+    name: claude-flow-prometheus-data
+  grafana-data:
+    name: claude-flow-grafana-data

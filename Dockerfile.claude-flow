@@ -1,0 +1,117 @@
+# Multi-stage Dockerfile for claude-flow
+# Stage 1: Build stage
+FROM node:20-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++ curl git bash
+
+# Set working directory
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Copy all source code first
+COPY . .
+
+# Install dependencies for each app individually
+RUN cd apps/manager && pnpm install
+RUN cd apps/dashboard && pnpm install
+RUN cd apps/worker && pnpm install
+RUN cd shared/config && pnpm install
+
+RUN cd shared/supabase && pnpm install
+RUN cd shared/types && pnpm install
+RUN cd shared/utils && pnpm install
+
+
+# Build all apps
+RUN pnpm run build --filter=!@swarm/langfuse-wrapper...
+
+# Stage 2: Production base
+FROM node:20-alpine AS prod-base
+
+# Install runtime dependencies
+RUN apk add --no-cache tini curl wget bash
+
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Create non-root user
+RUN addgroup -g 1001 -S swarm && adduser -u 1001 -S swarm -G swarm
+
+# Stage 3: Manager service
+FROM prod-base AS manager
+
+WORKDIR /app
+
+# Copy built manager app
+COPY --from=builder --chown=swarm:swarm /app/apps/manager/dist ./dist
+COPY --from=builder --chown=swarm:swarm /app/apps/manager/package.json ./
+COPY --from=builder --chown=swarm:swarm /app/apps/manager/node_modules ./node_modules
+
+# Switch to non-root user
+USER swarm
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+# Use tini for proper signal handling
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "dist/index.js"]
+
+# Stage 4: Dashboard service
+FROM prod-base AS dashboard
+
+WORKDIR /app
+
+# Copy built dashboard app
+COPY --from=builder --chown=swarm:swarm /app/apps/dashboard/.next ./.next
+COPY --from=builder --chown=swarm:swarm /app/apps/dashboard/public ./public
+COPY --from=builder --chown=swarm:swarm /app/apps/dashboard/package.json ./
+COPY --from=builder --chown=swarm:swarm /app/apps/dashboard/next.config.js ./
+COPY --from=builder --chown=swarm:swarm /app/apps/dashboard/node_modules ./node_modules
+
+
+# Switch to non-root user
+USER swarm
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:3000/api/health || exit 1
+
+# Use tini for proper signal handling
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "node_modules/next/dist/bin/next", "start"]
+
+# Stage 5: Worker service
+FROM prod-base AS worker
+
+WORKDIR /app
+
+# Copy built worker app
+COPY --from=builder --chown=swarm:swarm /app/apps/worker/dist ./dist
+COPY --from=builder --chown=swarm:swarm /app/apps/worker/package.json ./
+COPY --from=builder --chown=swarm:swarm /app/apps/worker/node_modules ./node_modules
+
+# Create required directories
+RUN mkdir -p /app/.swarm /app/.hive-mind && \
+    chown -R swarm:swarm /app/.swarm /app/.hive-mind
+
+# Switch to non-root user
+USER swarm
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD pgrep node || exit 1
+
+# Use tini for proper signal handling
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "dist/index.js"]

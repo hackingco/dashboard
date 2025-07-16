@@ -1,0 +1,330 @@
+# Docker Compose for Swarm Container Development
+# Built by Builder-2 Agent for Enterprise Swarm Platform
+
+version: '3.8'
+
+services:
+  # Swarm Manager Service
+  swarm-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.manager
+      args:
+        NODE_ENV: development
+        BUILD_DATE: ${BUILD_DATE:-}
+        BUILD_VERSION: ${BUILD_VERSION:-latest}
+    image: swarm/manager:${TAG:-latest}
+    container_name: swarm-manager
+    hostname: swarm-manager
+    restart: unless-stopped
+    ports:
+      - "3000:3000"    # Main API port
+      - "3001:3001"    # WebSocket port
+      - "8080:8080"    # Health check port
+    environment:
+      # Core configuration
+      NODE_ENV: development
+      PORT: 3000
+      SWARM_ROLE: manager
+      LOG_LEVEL: debug
+      
+      # Database configuration
+      DATABASE_PATH: /app/data/manager.db
+      DATABASE_URL: sqlite:///app/data/manager.db
+      
+      # Langfuse integration
+      LANGFUSE_ENABLED: "true"
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+      
+      # Supabase configuration (optional)
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      
+      # Fly.io configuration (optional)
+      FLY_API_TOKEN: ${FLY_API_TOKEN:-}
+      FLY_APP_NAME: ${FLY_APP_NAME:-}
+      
+      # Claude Flow configuration
+      CLAUDE_FLOW_ENABLED: "true"
+      CLAUDE_FLOW_SESSION_ID: swarm-manager
+      
+      # Health check configuration
+      HEALTH_CHECK_ENDPOINT: /health
+      HEALTH_CHECK_TIMEOUT: 10
+      MAX_RETRIES: 3
+      
+      # Performance tuning
+      NODE_OPTIONS: "--max-old-space-size=2048"
+      UV_THREADPOOL_SIZE: 4
+    volumes:
+      # Data persistence
+      - swarm_manager_data:/app/data
+      - swarm_manager_logs:/app/logs
+      - swarm_coordination:/app/.swarm
+      
+      # Development mounts (uncomment for development)
+      # - ./apps/manager/src:/app/src:ro
+      # - ./shared:/app/shared:ro
+    networks:
+      - swarm-network
+    depends_on:
+      - redis
+      - postgres
+    healthcheck:
+      test: ["CMD", "./health-check.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.swarm-manager.rule=Host(`manager.swarm.local`)"
+      - "traefik.http.services.swarm-manager.loadbalancer.server.port=3000"
+
+  # Swarm Worker Service
+  swarm-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        NODE_ENV: development
+        BUILD_DATE: ${BUILD_DATE:-}
+        BUILD_VERSION: ${BUILD_VERSION:-latest}
+    image: swarm/worker:${TAG:-latest}
+    container_name: swarm-worker
+    hostname: swarm-worker
+    restart: unless-stopped
+    ports:
+      - "3002:3002"    # Worker API port
+    environment:
+      # Core configuration
+      NODE_ENV: development
+      PORT: 3002
+      SWARM_ROLE: worker
+      LOG_LEVEL: debug
+      
+      # Database configuration
+      DATABASE_PATH: /app/data/worker.db
+      
+      # Manager connection
+      MANAGER_URL: http://swarm-manager:3000
+      MANAGER_HOST: swarm-manager
+      MANAGER_PORT: 3000
+      
+      # Langfuse integration
+      LANGFUSE_ENABLED: "true"
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+      
+      # Claude Flow configuration
+      CLAUDE_FLOW_ENABLED: "true"
+      CLAUDE_FLOW_SESSION_ID: swarm-worker
+      
+      # Health check configuration
+      HEALTH_CHECK_ENDPOINT: /health
+      HEALTH_CHECK_TIMEOUT: 10
+      MAX_RETRIES: 3
+      
+      # Performance tuning
+      NODE_OPTIONS: "--max-old-space-size=1024"
+      UV_THREADPOOL_SIZE: 2
+    volumes:
+      # Data persistence
+      - swarm_worker_data:/app/data
+      - swarm_worker_logs:/app/logs
+      - swarm_coordination:/app/.swarm
+      
+      # Development mounts (uncomment for development)
+      # - ./apps/worker/src:/app/src:ro
+      # - ./shared:/app/shared:ro
+    networks:
+      - swarm-network
+    depends_on:
+      - swarm-manager
+      - redis
+    healthcheck:
+      test: ["CMD", "./health-check.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.swarm-worker.rule=Host(`worker.swarm.local`)"
+      - "traefik.http.services.swarm-worker.loadbalancer.server.port=3002"
+
+  # Redis for coordination and caching
+  redis:
+    image: redis:7-alpine
+    container_name: swarm-redis
+    hostname: swarm-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-swarm123}
+    volumes:
+      - swarm_redis_data:/data
+      - ./config/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-swarm123}
+
+  # PostgreSQL for persistent data
+  postgres:
+    image: postgres:15-alpine
+    container_name: swarm-postgres
+    hostname: swarm-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-swarm}
+      POSTGRES_USER: ${POSTGRES_USER:-swarm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-swarm123}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - swarm_postgres_data:/var/lib/postgresql/data
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-swarm} -d ${POSTGRES_DB:-swarm}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: swarm-nginx
+    hostname: swarm-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/conf.d:/etc/nginx/conf.d:ro
+      - swarm_nginx_logs:/var/log/nginx
+    networks:
+      - swarm-network
+    depends_on:
+      - swarm-manager
+      - swarm-worker
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Monitoring with Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: swarm-prometheus
+    hostname: swarm-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - swarm_prometheus_data:/prometheus
+    networks:
+      - swarm-network
+    profiles:
+      - monitoring
+
+  # Grafana for visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: swarm-grafana
+    hostname: swarm-grafana
+    restart: unless-stopped
+    ports:
+      - "3080:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - swarm_grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - swarm-network
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+# Network configuration
+networks:
+  swarm-network:
+    driver: bridge
+    name: swarm-network
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volume configuration
+volumes:
+  # Manager data
+  swarm_manager_data:
+    driver: local
+    name: swarm_manager_data
+  
+  swarm_manager_logs:
+    driver: local
+    name: swarm_manager_logs
+  
+  # Worker data
+  swarm_worker_data:
+    driver: local
+    name: swarm_worker_data
+  
+  swarm_worker_logs:
+    driver: local
+    name: swarm_worker_logs
+  
+  # Shared coordination data
+  swarm_coordination:
+    driver: local
+    name: swarm_coordination
+  
+  # Database data
+  swarm_redis_data:
+    driver: local
+    name: swarm_redis_data
+  
+  swarm_postgres_data:
+    driver: local
+    name: swarm_postgres_data
+  
+  # Monitoring data
+  swarm_prometheus_data:
+    driver: local
+    name: swarm_prometheus_data
+  
+  swarm_grafana_data:
+    driver: local
+    name: swarm_grafana_data
+  
+  # Nginx logs
+  swarm_nginx_logs:
+    driver: local
+    name: swarm_nginx_logs

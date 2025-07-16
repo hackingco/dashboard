@@ -1,0 +1,240 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for Langfuse
+  postgres:
+    image: postgres:15-alpine
+    container_name: claude-flow-postgres
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse_password
+      POSTGRES_MULTIPLE_DATABASES: claude_flow,swarm_coordination
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - swarm-network
+
+  # Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    container_name: claude-flow-redis
+    command: redis-server --appendonly yes --requirepass redis_password
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - swarm-network
+
+  # Langfuse - AI Observability Platform
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: claude-flow-langfuse
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse_password@postgres:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: langfuse_secret_key_change_in_production
+      SALT: langfuse_salt_change_in_production
+      ENCRYPTION_KEY: langfuse_encryption_key_32_chars_min
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+    ports:
+      - "3001:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - swarm-network
+
+  # Claude Flow Manager - Main API and coordination
+  claude-flow-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.manager
+    container_name: claude-flow-manager
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      langfuse:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DATABASE_URL: postgresql://langfuse:langfuse_password@postgres:5432/claude_flow
+      REDIS_URL: redis://:redis_password@redis:6379
+      LANGFUSE_SECRET_KEY: sk-lf-test-key
+      LANGFUSE_PUBLIC_KEY: pk-lf-test-key
+      LANGFUSE_BASE_URL: http://langfuse:3000
+      SWARM_COORDINATION_ENABLED: "true"
+      HIVE_MIND_ENABLED: "true"
+      MCP_SERVER_PORT: 8081
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+      - ./src:/app/src:ro
+      - swarm_memory:/app/.swarm
+      - hive_memory:/app/.hive-mind
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - swarm-network
+
+  # Claude Flow Dashboard - Web UI
+  claude-flow-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: claude-flow-dashboard
+    depends_on:
+      claude-flow-manager:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_LANGFUSE_URL: http://localhost:3001
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: dashboard_secret_key_change_in_production
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - swarm-network
+
+  # Claude Flow Worker - Agent execution engine
+  claude-flow-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: claude-flow-worker
+    depends_on:
+      claude-flow-manager:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      MANAGER_URL: http://claude-flow-manager:8080
+      REDIS_URL: redis://:redis_password@redis:6379
+      LANGFUSE_SECRET_KEY: sk-lf-test-key
+      LANGFUSE_PUBLIC_KEY: pk-lf-test-key
+      LANGFUSE_BASE_URL: http://langfuse:3000
+      WORKER_CONCURRENCY: "4"
+      AGENT_TYPES: "researcher,coder,analyst,tester,coordinator"
+    volumes:
+      - swarm_memory:/app/.swarm
+      - hive_memory:/app/.hive-mind
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://claude-flow-manager:8080/workers/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    networks:
+      - swarm-network
+    deploy:
+      replicas: 2
+
+  # NGINX Load Balancer and Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: claude-flow-nginx
+    depends_on:
+      - claude-flow-dashboard
+      - claude-flow-manager
+      - langfuse
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/ssl:/etc/nginx/ssl:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - swarm-network
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: claude-flow-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - swarm-network
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: claude-flow-grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3002:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - swarm-network
+
+networks:
+  swarm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  swarm_memory:
+    driver: local
+  hive_memory:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

@@ -2,7 +2,7 @@ name: Deploy Real-Time Telemetry Dashboard
 
 on:
   push:
-    branches: [ enterprise-swarm-platform ]
+    branches: [ dashboard ]
     paths: [ 'admin-dashboard/**' ]
   workflow_dispatch:
 

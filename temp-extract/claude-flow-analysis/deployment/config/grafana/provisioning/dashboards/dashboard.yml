@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: 'claude-flow-dashboards'
+    orgId: 1
+    folder: 'Claude Flow'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

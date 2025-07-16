@@ -1,0 +1,127 @@
+# Multi-stage Dockerfile for Swarm Manager with Langfuse Integration
+# Built by Builder-2 Agent for Enterprise Swarm Platform
+
+# Stage 1: Base Node.js environment with system dependencies
+FROM node:18-alpine AS base
+
+# Install system dependencies for native modules
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    sqlite \
+    sqlite-dev \
+    bash \
+    curl \
+    git
+
+# Create app directory
+WORKDIR /app
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S swarm && \
+    adduser -S swarm -u 1001
+
+# Stage 2: Dependencies installation
+FROM base AS deps
+
+# Copy package files from multiple locations
+COPY package*.json ./
+COPY pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
+
+# Copy workspace packages
+COPY shared/langfuse-wrapper/package.json ./shared/langfuse-wrapper/
+COPY shared/config/package.json ./shared/config/
+COPY shared/types/package.json ./shared/types/
+COPY shared/utils/package.json ./shared/utils/
+COPY shared/supabase/package.json ./shared/supabase/
+COPY apps/manager/package.json ./apps/manager/
+
+# Install pnpm and dependencies
+RUN npm install -g pnpm@latest
+RUN pnpm install --frozen-lockfile --prod
+
+# Stage 3: Build stage
+FROM base AS builder
+
+# Copy all source files
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/shared ./shared
+COPY . .
+
+# Install pnpm for building
+RUN npm install -g pnpm@latest
+
+# Build shared packages first
+RUN cd shared/langfuse-wrapper && pnpm build
+RUN cd shared/config && pnpm build
+RUN cd shared/types && pnpm build
+RUN cd shared/utils && pnpm build
+RUN cd shared/supabase && pnpm build
+
+# Build manager application
+RUN cd apps/manager && pnpm build
+
+# Stage 4: Runtime environment
+FROM node:18-alpine AS runtime
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    sqlite \
+    bash \
+    curl \
+    dumb-init \
+    tini
+
+# Create app directory and user
+WORKDIR /app
+RUN addgroup -g 1001 -S swarm && \
+    adduser -S swarm -u 1001
+
+# Copy built application
+COPY --from=builder --chown=swarm:swarm /app/apps/manager/dist ./dist
+COPY --from=builder --chown=swarm:swarm /app/shared ./shared
+COPY --from=deps --chown=swarm:swarm /app/node_modules ./node_modules
+
+# Copy package files
+COPY --chown=swarm:swarm apps/manager/package.json ./
+
+# Copy configuration and scripts
+COPY --chown=swarm:swarm docker/entrypoint.sh ./entrypoint.sh
+COPY --chown=swarm:swarm docker/health-check.sh ./health-check.sh
+
+# Make scripts executable
+RUN chmod +x ./entrypoint.sh ./health-check.sh
+
+# Create necessary directories
+RUN mkdir -p /app/data /app/logs /app/.swarm && \
+    chown -R swarm:swarm /app
+
+# Health check configuration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD ./health-check.sh || exit 1
+
+# Environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV SWARM_ROLE=manager
+ENV LANGFUSE_ENABLED=true
+ENV DATABASE_PATH=/app/data/swarm.db
+ENV LOG_LEVEL=info
+
+# Expose ports
+EXPOSE 3000 3001 8080
+
+# Switch to non-root user
+USER swarm
+
+# Use tini as PID 1 for proper signal handling
+ENTRYPOINT ["tini", "--"]
+CMD ["./entrypoint.sh"]
+
+# Labels for metadata
+LABEL maintainer="Swarm Orchestrator Team"
+LABEL version="1.0.0"
+LABEL description="Enterprise Swarm Manager with Langfuse Integration"
+LABEL component="manager"

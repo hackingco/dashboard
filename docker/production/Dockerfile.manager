@@ -1,0 +1,103 @@
+# Production-ready Multi-stage Dockerfile for Swarm Manager
+# Optimized for size, security, and performance
+
+# Stage 1: Base dependencies with security hardening
+FROM node:18-alpine AS base-deps
+
+# Install security updates and minimal runtime dependencies
+RUN apk update && \
+    apk upgrade && \
+    apk add --no-cache \
+        curl \
+        tini \
+        sqlite \
+        ca-certificates && \
+    rm -rf /var/cache/apk/*
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Stage 2: Build environment
+FROM base-deps AS builder
+
+WORKDIR /build
+
+# Copy package files for dependency caching
+COPY package*.json ./
+COPY shared/langfuse-wrapper/package*.json ./shared/langfuse-wrapper/
+COPY apps/manager/package*.json ./apps/manager/
+
+# Install all dependencies (including dev)
+RUN npm ci --quiet
+
+# Copy source code
+COPY shared ./shared
+COPY apps/manager ./apps/manager
+COPY tsconfig*.json ./
+
+# Build the application
+RUN npm run build --workspace=apps/manager && \
+    npm run build --workspace=shared/langfuse-wrapper
+
+# Stage 3: Production dependencies only
+FROM base-deps AS prod-deps
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY shared/langfuse-wrapper/package*.json ./shared/langfuse-wrapper/
+COPY apps/manager/package*.json ./apps/manager/
+
+# Install production dependencies only
+RUN npm ci --quiet --production && \
+    npm cache clean --force
+
+# Stage 4: Final production image
+FROM base-deps AS production
+
+# Set NODE_ENV early for optimal Node.js performance
+ENV NODE_ENV=production
+
+# Use tini for proper signal handling
+ENTRYPOINT ["/sbin/tini", "--"]
+
+# Switch to non-root user
+USER nodejs
+
+WORKDIR /app
+
+# Copy production dependencies from prod-deps stage
+COPY --from=prod-deps --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=prod-deps --chown=nodejs:nodejs /app/shared/langfuse-wrapper/node_modules ./shared/langfuse-wrapper/node_modules
+COPY --from=prod-deps --chown=nodejs:nodejs /app/apps/manager/node_modules ./apps/manager/node_modules
+
+# Copy built application from builder stage
+COPY --from=builder --chown=nodejs:nodejs /build/apps/manager/dist ./apps/manager/dist
+COPY --from=builder --chown=nodejs:nodejs /build/shared/langfuse-wrapper/dist ./shared/langfuse-wrapper/dist
+
+# Copy necessary config files
+COPY --chown=nodejs:nodejs apps/manager/package.json ./apps/manager/
+COPY --chown=nodejs:nodejs shared/langfuse-wrapper/package.json ./shared/langfuse-wrapper/
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/data/.swarm /app/logs /app/tmp && \
+    chmod 755 /app/data /app/logs /app/tmp
+
+# Health check with proper timeout and retry logic
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+    CMD curl -f http://localhost:${PORT:-8001}/health || exit 1
+
+# Expose metrics port as well
+EXPOSE 8001 9001
+
+# Set resource limits and security options
+LABEL maintainer="swarm-team" \
+      version="1.0.0" \
+      description="Swarm Manager Service" \
+      security.scan="trivy"
+
+# Run the application
+WORKDIR /app/apps/manager
+CMD ["node", "--max-old-space-size=1024", "--enable-source-maps", "dist/index.js"]

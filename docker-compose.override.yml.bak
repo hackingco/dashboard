@@ -1,0 +1,59 @@
+# Docker Compose override file for development
+# This file allows developers to customize the setup without modifying the main compose file
+
+version: '3.8'
+
+services:
+  # Override Langfuse server for development
+  langfuse-server:
+    environment:
+      - LANGFUSE_LOG_LEVEL=debug
+      - LANGFUSE_DEBUG=true
+    volumes:
+      - ./langfuse-data:/app/data
+    ports:
+      - "3000:3000"
+      - "3001:3001"  # Debug port
+  
+  # Override for development hot-reload
+  swarm-manager:
+    volumes:
+      - ./shared/langfuse-wrapper:/app/langfuse-wrapper
+      - ./apps/manager:/app/apps/manager
+    command: ["npm", "run", "dev"]
+    environment:
+      - LANGFUSE_LOG_LEVEL=debug
+      - LANGFUSE_VERBOSE_TRACING=true
+      - LANGFUSE_DUMP_CONFIG=true
+  
+  # Development worker overrides
+  swarm-worker-1:
+    volumes:
+      - ./shared/langfuse-wrapper:/app/langfuse-wrapper
+      - ./apps/worker:/app/apps/worker
+    command: ["npm", "run", "dev"]
+    environment:
+      - LANGFUSE_LOG_LEVEL=debug
+      - LANGFUSE_VERBOSE_TRACING=true
+  
+  swarm-worker-2:
+    volumes:
+      - ./shared/langfuse-wrapper:/app/langfuse-wrapper
+      - ./apps/worker:/app/apps/worker
+    command: ["npm", "run", "dev"]
+    environment:
+      - LANGFUSE_LOG_LEVEL=debug
+      - LANGFUSE_VERBOSE_TRACING=true
+
+  # Development test runner
+  test-runner:
+    volumes:
+      - ./shared/langfuse-wrapper:/app/langfuse-wrapper
+      - ./tests:/app/tests
+    environment:
+      - NODE_ENV=development
+      - LANGFUSE_LOG_LEVEL=debug
+      - LANGFUSE_VERBOSE_TRACING=true
+    profiles:
+      - testing
+      - development

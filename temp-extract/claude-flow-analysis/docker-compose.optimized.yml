@@ -1,0 +1,323 @@
+# Optimized Docker Compose configuration for Claude Flow ecosystem
+# Features: Multi-stage builds, caching, health checks, monitoring
+
+version: '3.8'
+
+services:
+  # Claude Flow Core Service
+  claude-flow:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+      target: runtime
+      cache_from:
+        - claude-flow:builder
+        - claude-flow:runtime
+      args:
+        - NODE_ENV=production
+    image: claude-flow:latest
+    container_name: claude-flow-core
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - SWARM_MAX_AGENTS=8
+      - MEMORY_PROVIDER=sqlite
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+    volumes:
+      - claude-data:/app/data
+      - claude-logs:/app/logs
+      - claude-memory:/app/.swarm
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "npm", "run", "health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - redis
+      - monitoring
+    networks:
+      - claude-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.claude-flow.rule=Host(`localhost`)"
+      - "traefik.http.services.claude-flow.loadbalancer.server.port=3000"
+
+  # Redis for coordination and caching
+  redis:
+    image: redis:7-alpine
+    container_name: claude-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - claude-network
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 256m
+
+  # Langfuse for monitoring and tracing
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: claude-langfuse
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse123}@langfuse-db:5432/langfuse
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-claude-flow-secret}
+      - SALT=${SALT:-claude-flow-salt}
+      - NEXTAUTH_URL=http://localhost:3001
+    ports:
+      - "3001:3000"
+    depends_on:
+      - langfuse-db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - claude-network
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 512m
+
+  # PostgreSQL for Langfuse
+  langfuse-db:
+    image: postgres:15-alpine
+    container_name: claude-langfuse-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=langfuse
+      - POSTGRES_USER=langfuse
+      - POSTGRES_PASSWORD=${LANGFUSE_DB_PASSWORD:-langfuse123}
+    volumes:
+      - langfuse-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - claude-network
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 256m
+
+  # CLI Instrumentation Service
+  cli-instrumentation:
+    build:
+      context: ./cli-instrumentation
+      dockerfile: Dockerfile
+      cache_from:
+        - claude-cli-instrumentation:latest
+    image: claude-cli-instrumentation:latest
+    container_name: claude-cli-instrumentation
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - LANGFUSE_HOST=http://langfuse:3000
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+    volumes:
+      - claude-traces:/app/traces
+      - claude-logs:/app/logs
+    depends_on:
+      - langfuse
+      - redis
+    networks:
+      - claude-network
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+        reservations:
+          memory: 128m
+
+  # Monitoring and metrics
+  monitoring:
+    image: prom/prometheus:latest
+    container_name: claude-monitoring
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=168h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - claude-network
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 256m
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: claude-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "3002:3000"
+    depends_on:
+      - monitoring
+    networks:
+      - claude-network
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+        reservations:
+          memory: 128m
+
+  # Load balancer and reverse proxy
+  traefik:
+    image: traefik:v3.0
+    container_name: claude-traefik
+    restart: unless-stopped
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --metrics.prometheus=true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - claude-network
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+        reservations:
+          memory: 64m
+
+# Development services (enabled with docker-compose.override.yml)
+  claude-flow-dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+      target: development
+    image: claude-flow:dev
+    container_name: claude-flow-dev
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - claude-dev-data:/app/data
+    ports:
+      - "3000:3000"
+      - "9229:9229"  # Node.js debugger
+    command: npm run dev
+    networks:
+      - claude-network
+
+# Networks
+networks:
+  claude-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volumes with optimization settings
+volumes:
+  claude-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data
+  claude-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./logs
+  claude-memory:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./.swarm
+  claude-traces:
+    driver: local
+  redis-data:
+    driver: local
+  langfuse-db-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  claude-dev-data:
+    driver: local
+
+# Configuration for production deployment
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Apply logging to all services
+services:
+  claude-flow:
+    logging: *default-logging
+  redis:
+    logging: *default-logging
+  langfuse:
+    logging: *default-logging
+  langfuse-db:
+    logging: *default-logging
+  cli-instrumentation:
+    logging: *default-logging
+  monitoring:
+    logging: *default-logging
+  grafana:
+    logging: *default-logging
+  traefik:
+    logging: *default-logging

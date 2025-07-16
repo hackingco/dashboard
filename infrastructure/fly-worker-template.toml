@@ -1,0 +1,123 @@
+# Fly.io Configuration Template for Dynamic Workers
+# This template is used to spawn workers dynamically based on workload
+
+app = "swarm-worker-{WORKER_TYPE}"
+primary_region = "{WORKER_REGION}"
+
+[build]
+  dockerfile = "../apps/worker/Dockerfile"
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+  
+  # Worker configuration (set per deployment)
+  WORKER_TYPE = "{WORKER_TYPE}"
+  WORKER_ID = "{WORKER_ID}"
+  
+  # Service discovery
+  MANAGER_URL = "http://swarm-manager-prod.internal:8080"
+  TELEMETRY_ENDPOINT = "http://swarm-manager-prod.internal:8080/telemetry"
+  LANGFUSE_ENDPOINT = "http://langfuse-swarm.internal:3000"
+  
+  # Cache and coordination
+  REDIS_URL = "redis://default:@swarm-redis.internal:6379"
+  
+  # Worker-specific settings
+  WORKER_HEARTBEAT_INTERVAL = "30"
+  WORKER_TASK_TIMEOUT = "300"
+  WORKER_MAX_CONCURRENT_TASKS = "5"
+  
+  # Performance tuning
+  UV_THREADPOOL_SIZE = "4"
+  NODE_OPTIONS = "--max-old-space-size=200"
+
+[http_service]
+  internal_port = 3000
+  force_https = false
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 3000
+  processes = ["app"]
+
+  [[services.ports]]
+    port = 3000
+    handlers = ["http"]
+
+# Health checks optimized for workers
+[[services.tcp_checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "15s"
+
+[[services.http_checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "15s"
+  method = "get"
+  path = "/health"
+  protocol = "http"
+
+# Persistent storage for worker data
+[mounts]
+  source = "worker_{WORKER_TYPE}_data"
+  destination = "/data"
+  processes = ["app"]
+
+# Light resource allocation for workers
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
+
+[experimental]
+  auto_rollback = true
+  private_network = true
+
+# Metrics for worker monitoring
+[metrics]
+  port = 9093
+  path = "/metrics"
+
+# Auto-scaling based on task queue
+[processes]
+  app = "node dist/index.js"
+
+# Regional distribution strategy
+[placement]
+  strategy = "balanced"
+  regions = ["{WORKER_REGION}", "ord"]
+
+# Auto-scaling configuration
+[[autoscaling]]
+  min_machines = 0
+  max_machines = 10
+  
+  [[autoscaling.metrics]]
+    type = "requests"
+    soft_limit = 10
+    hard_limit = 20
+
+# Network configuration for private access
+[network]
+  strategy = "rolling"
+  wait_timeout = "15s"
+
+# Worker lifecycle hooks
+[hooks]
+  before_deploy = "curl -X POST http://swarm-manager-prod.internal:8080/api/workers/pre-deploy -d '{\"worker_type\": \"{WORKER_TYPE}\", \"action\": \"prepare\"}'"
+  after_deploy = "curl -X POST http://swarm-manager-prod.internal:8080/api/workers/post-deploy -d '{\"worker_type\": \"{WORKER_TYPE}\", \"action\": \"register\"}'"
+
+# Secrets that need to be set via `fly secrets set`
+# MANAGER_TOKEN = "worker-auth-token"
+# WORKER_ENCRYPTION_KEY = "worker-specific-key"

@@ -1,0 +1,41 @@
+{
+  "name": "docker-stack-validation",
+  "version": "1.0.0",
+  "description": "Comprehensive Docker stack validation suite for swarm platform",
+  "main": "run-all-docker-tests.sh",
+  "scripts": {
+    "test": "./run-all-docker-tests.sh",
+    "test:docker": "./run-all-docker-tests.sh docker",
+    "test:langfuse": "./run-all-docker-tests.sh langfuse",
+    "test:clickhouse": "./run-all-docker-tests.sh clickhouse",
+    "test:prisma": "./run-all-docker-tests.sh prisma",
+    "test:health": "./run-all-docker-tests.sh health",
+    "setup": "./run-all-docker-tests.sh setup",
+    "report": "./run-all-docker-tests.sh report"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "ioredis": "^5.3.0",
+    "pg": "^8.11.0",
+    "langfuse": "^3.0.0",
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "devDependencies": {
+    "jq": "^1.7.0"
+  },
+  "keywords": [
+    "docker",
+    "validation",
+    "testing",
+    "langfuse",
+    "clickhouse",
+    "prisma",
+    "monitoring",
+    "health-check"
+  ],
+  "author": "Docker Stack Validation Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

@@ -1,0 +1,103 @@
+# 🎯 Dockerfile for Swarm Coordinator Agent
+# Optimized for coordination, task delegation, and resource management
+
+FROM node:18-alpine AS base
+
+# Install system dependencies
+RUN apk add --no-cache \
+    git \
+    python3 \
+    make \
+    g++ \
+    curl \
+    bash \
+    sqlite \
+    && rm -rf /var/cache/apk/*
+
+WORKDIR /app
+
+# ═══════════════════════════════════════════════════════════════
+# 📦 DEPENDENCY INSTALLATION STAGE
+# ═══════════════════════════════════════════════════════════════
+
+FROM base AS deps
+
+# Copy package files
+COPY docker/swarm-coordinator/package*.json ./
+COPY docker/swarm-coordinator/pnpm-lock.yaml* ./
+
+# Install pnpm
+RUN npm install -g pnpm@latest
+
+# Install dependencies with optimization
+RUN pnpm install --frozen-lockfile --prod=false
+
+# ═══════════════════════════════════════════════════════════════
+# 🏗️ BUILD STAGE
+# ═══════════════════════════════════════════════════════════════
+
+FROM deps AS builder
+
+# Copy source code
+COPY docker/swarm-coordinator/src/ ./src/
+COPY docker/swarm-coordinator/tsconfig.json ./
+COPY docker/swarm-coordinator/.eslintrc.js ./
+
+# Build the application
+RUN pnpm run build
+
+# ═══════════════════════════════════════════════════════════════
+# 🚀 PRODUCTION STAGE
+# ═══════════════════════════════════════════════════════════════
+
+FROM base AS production
+
+# Create non-root user
+RUN addgroup -g 1001 -S swarm && \
+    adduser -S coordinator -u 1001 -G swarm
+
+# Install production dependencies only
+COPY docker/swarm-coordinator/package*.json ./
+RUN npm install -g pnpm@latest && \
+    pnpm install --frozen-lockfile --prod && \
+    pnpm store prune
+
+# Copy built application
+COPY --from=builder --chown=coordinator:swarm /app/dist ./dist
+COPY --from=builder --chown=coordinator:swarm /app/node_modules ./node_modules
+
+# Copy configuration files
+COPY --chown=coordinator:swarm docker/swarm-coordinator/config/ ./config/
+
+# Create necessary directories
+RUN mkdir -p logs .swarm workspace && \
+    chown -R coordinator:swarm logs .swarm workspace
+
+# Set up environment
+ENV NODE_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=1024" \
+    AGENT_TYPE=coordinator \
+    LOG_LEVEL=info
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Switch to non-root user
+USER coordinator
+
+# Expose port
+EXPOSE 8080
+
+# Start the coordinator
+CMD ["node", "dist/index.js"]
+
+# ═══════════════════════════════════════════════════════════════
+# 📋 METADATA
+# ═══════════════════════════════════════════════════════════════
+
+LABEL maintainer="Claude Flow Swarm Team" \
+      version="2.0.0" \
+      description="Swarm Coordinator Agent - Master coordination for Claude Flow swarm" \
+      service="swarm-coordinator" \
+      tier="coordination"

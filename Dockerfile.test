@@ -1,0 +1,153 @@
+# Test Container for Langfuse Wrapper
+# Optimized for testing with proper Node.js setup
+
+FROM node:18-alpine AS base
+
+# Install system dependencies for testing
+RUN apk add --no-cache \
+    curl \
+    bash \
+    sqlite \
+    postgresql-client \
+    git \
+    && rm -rf /var/cache/apk/*
+
+# Create app directory
+WORKDIR /app
+
+# Set proper permissions for node user
+RUN chown -R node:node /app
+USER node
+
+# Copy package files for dependency caching
+COPY --chown=node:node package*.json ./
+COPY --chown=node:node shared/langfuse-wrapper/package*.json ./shared/langfuse-wrapper/
+
+# Install dependencies
+WORKDIR /app/shared/langfuse-wrapper
+RUN npm ci --production --silent
+
+# Development dependencies for testing
+RUN npm ci --silent
+
+# Copy source code
+COPY --chown=node:node shared/langfuse-wrapper/ ./
+
+# Build TypeScript
+RUN npm run build
+
+# Create necessary directories
+RUN mkdir -p /app/data/.swarm \
+    && mkdir -p /app/data/logs \
+    && mkdir -p /app/data/test-results
+
+# Health check script
+COPY --chown=node:node <<EOF /app/health-check.sh
+#!/bin/bash
+set -e
+
+echo "🔍 Health Check: Testing Langfuse Wrapper"
+
+# Check if TypeScript compiled successfully
+if [ ! -d "dist" ]; then
+    echo "❌ TypeScript compilation failed"
+    exit 1
+fi
+
+# Check if test database is accessible
+if ! command -v sqlite3 &> /dev/null; then
+    echo "⚠️ SQLite not available for testing"
+fi
+
+# Check Node.js and npm
+node --version
+npm --version
+
+echo "✅ Basic health check passed"
+exit 0
+EOF
+
+RUN chmod +x /app/health-check.sh
+
+# Test execution script
+COPY --chown=node:node <<EOF /app/run-test-suite.sh
+#!/bin/bash
+set -e
+
+echo "🧪 Starting Langfuse Wrapper Test Suite"
+echo "========================================"
+
+# Environment info
+echo "Node.js: \$(node --version)"
+echo "npm: \$(npm --version)"
+echo "Working directory: \$(pwd)"
+echo "Test mode: \${TEST_MODE:-true}"
+echo "Langfuse host: \${LANGFUSE_HOST:-http://langfuse-server-test:3000}"
+
+# Wait for dependencies
+echo "⏳ Waiting for Langfuse server..."
+timeout=120
+elapsed=0
+while ! curl -f "\${LANGFUSE_HOST}/api/public/health" > /dev/null 2>&1; do
+    if [ \$elapsed -gt \$timeout ]; then
+        echo "❌ Timeout waiting for Langfuse server"
+        exit 1
+    fi
+    echo "Waiting for Langfuse server... (\${elapsed}s/\${timeout}s)"
+    sleep 5
+    elapsed=\$((elapsed + 5))
+done
+
+echo "✅ Langfuse server is ready"
+
+# Set test environment
+export NODE_ENV=test
+export LANGFUSE_ENABLED=false  # Use mock mode for reliable testing
+
+# Create test results directory
+mkdir -p /app/data/test-results
+
+echo "🔨 Building TypeScript..."
+npm run build
+
+echo "🧪 Running Unit Tests..."
+npm run test:unit 2>&1 | tee /app/data/test-results/unit-tests.log
+
+echo "🔄 Running Integration Tests..."
+npm run test:integration 2>&1 | tee /app/data/test-results/integration-tests.log
+
+echo "⚡ Running Performance Tests..."
+npm run test:performance 2>&1 | tee /app/data/test-results/performance-tests.log
+
+echo "📊 Generating Coverage Report..."
+npm run test:coverage 2>&1 | tee /app/data/test-results/coverage.log
+
+echo "🎯 Running Comprehensive Test Suite..."
+npm run test:comprehensive 2>&1 | tee /app/data/test-results/comprehensive.log
+
+echo "📝 Generating Test Summary..."
+if [ -f "tests/test-summary.ts" ]; then
+    npx ts-node tests/test-summary.ts 2>&1 | tee /app/data/test-results/summary.log
+fi
+
+echo "✅ Test suite completed successfully!"
+echo "📄 Test results saved to /app/data/test-results/"
+
+# Keep container running for result inspection
+if [ "\${KEEP_RUNNING:-false}" = "true" ]; then
+    echo "🔄 Keeping container running for inspection..."
+    tail -f /dev/null
+fi
+EOF
+
+RUN chmod +x /app/run-test-suite.sh
+
+# Expose health check port (if needed)
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD /app/health-check.sh
+
+# Default command runs the test suite
+CMD ["/app/run-test-suite.sh"]

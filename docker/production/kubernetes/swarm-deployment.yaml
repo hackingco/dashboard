@@ -1,0 +1,633 @@
+# Kubernetes Deployment Configuration for Swarm Platform
+# Alternative to Docker Compose for cloud-native deployments
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: swarm-production
+  labels:
+    name: swarm-production
+    environment: production
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: swarm-config
+  namespace: swarm-production
+data:
+  NODE_ENV: "production"
+  LANGFUSE_COORDINATION_ENABLED: "true"
+  LANGFUSE_FEATURE_AUTO_TRACING: "true"
+  LANGFUSE_FEATURE_SPAN_ENRICHMENT: "true"
+  LANGFUSE_FEATURE_TOKEN_TRACKING: "true"
+  LANGFUSE_FEATURE_MEMORY_COORDINATION: "true"
+  LANGFUSE_FEATURE_HOOK_INTERCEPTION: "true"
+  LANGFUSE_FEATURE_PERFORMANCE_MONITORING: "true"
+  LANGFUSE_LOG_LEVEL: "info"
+  LANGFUSE_COLLECT_METRICS: "true"
+  LANGFUSE_TRACK_TOKEN_COSTS: "true"
+
+---
+# Secret for sensitive data
+apiVersion: v1
+kind: Secret
+metadata:
+  name: swarm-secrets
+  namespace: swarm-production
+type: Opaque
+stringData:
+  LANGFUSE_DB_PASSWORD: "your-db-password"
+  REDIS_PASSWORD: "your-redis-password"
+  LANGFUSE_PUBLIC_KEY: "your-public-key"
+  LANGFUSE_SECRET_KEY: "your-secret-key"
+  JWT_SECRET: "your-jwt-secret"
+  MANAGER_API_KEY: "your-api-key"
+
+---
+# PostgreSQL StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: swarm-production
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          value: langfuse
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: swarm-secrets
+              key: LANGFUSE_DB_PASSWORD
+        - name: POSTGRES_DB
+          value: langfuse
+        - name: POSTGRES_INITDB_ARGS
+          value: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - langfuse
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - langfuse
+          initialDelaySeconds: 5
+          periodSeconds: 5
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: "fast-ssd"
+      resources:
+        requests:
+          storage: 100Gi
+
+---
+# PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: swarm-production
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+  clusterIP: None
+
+---
+# Redis StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: swarm-production
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        command:
+        - redis-server
+        - --requirepass
+        - $(REDIS_PASSWORD)
+        - --appendonly
+        - "yes"
+        - --appendfsync
+        - everysec
+        - --maxmemory
+        - 1gb
+        - --maxmemory-policy
+        - allkeys-lru
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: swarm-secrets
+              key: REDIS_PASSWORD
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - -a
+            - $(REDIS_PASSWORD)
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: "fast-ssd"
+      resources:
+        requests:
+          storage: 10Gi
+
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: swarm-production
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+
+---
+# Langfuse Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse
+  namespace: swarm-production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: langfuse
+  template:
+    metadata:
+      labels:
+        app: langfuse
+    spec:
+      containers:
+      - name: langfuse
+        image: langfuse/langfuse:2
+        ports:
+        - containerPort: 3000
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://langfuse:$(LANGFUSE_DB_PASSWORD)@postgres:5432/langfuse"
+        - name: NEXTAUTH_URL
+          value: "https://yourdomain.com/langfuse"
+        - name: NEXTAUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: swarm-secrets
+              key: NEXTAUTH_SECRET
+        - name: NODE_ENV
+          value: "production"
+        - name: REDIS_URL
+          value: "redis://:$(REDIS_PASSWORD)@redis:6379/0"
+        envFrom:
+        - configMapRef:
+            name: swarm-config
+        - secretRef:
+            name: swarm-secrets
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "3Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /api/public/health
+            port: 3000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /api/public/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+---
+# Langfuse Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse
+  namespace: swarm-production
+spec:
+  selector:
+    app: langfuse
+  ports:
+  - port: 3000
+    targetPort: 3000
+  type: ClusterIP
+
+---
+# Swarm Manager Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: swarm-manager
+  namespace: swarm-production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: swarm-manager
+  template:
+    metadata:
+      labels:
+        app: swarm-manager
+        role: manager
+    spec:
+      containers:
+      - name: swarm-manager
+        image: swarm-manager:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8001
+          name: api
+        - containerPort: 9001
+          name: metrics
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: NODE_OPTIONS
+          value: "--max-old-space-size=1024 --enable-source-maps"
+        - name: LANGFUSE_HOST
+          value: "http://langfuse:3000"
+        - name: REDIS_URL
+          value: "redis://:$(REDIS_PASSWORD)@redis:6379/1"
+        - name: PORT
+          value: "8001"
+        - name: METRICS_PORT
+          value: "9001"
+        - name: AGENT_ID
+          value: "manager-001"
+        - name: AGENT_ROLE
+          value: "manager"
+        envFrom:
+        - configMapRef:
+            name: swarm-config
+        - secretRef:
+            name: swarm-secrets
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        volumeMounts:
+        - name: swarm-data
+          mountPath: /app/data
+      volumes:
+      - name: swarm-data
+        persistentVolumeClaim:
+          claimName: swarm-data-pvc
+
+---
+# Swarm Manager Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: swarm-manager
+  namespace: swarm-production
+  labels:
+    app: swarm-manager
+spec:
+  selector:
+    app: swarm-manager
+  ports:
+  - name: api
+    port: 8001
+    targetPort: 8001
+  - name: metrics
+    port: 9001
+    targetPort: 9001
+  type: ClusterIP
+
+---
+# Swarm Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: swarm-worker
+  namespace: swarm-production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: swarm-worker
+  template:
+    metadata:
+      labels:
+        app: swarm-worker
+        role: worker
+    spec:
+      containers:
+      - name: swarm-worker
+        image: swarm-worker:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8002
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: NODE_OPTIONS
+          value: "--max-old-space-size=512 --enable-source-maps"
+        - name: LANGFUSE_HOST
+          value: "http://langfuse:3000"
+        - name: MANAGER_URL
+          value: "http://swarm-manager:8001"
+        - name: REDIS_URL
+          value: "redis://:$(REDIS_PASSWORD)@redis:6379/2"
+        - name: PORT
+          value: "8002"
+        - name: AGENT_ROLE
+          value: "worker"
+        envFrom:
+        - configMapRef:
+            name: swarm-config
+        - secretRef:
+            name: swarm-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 45
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+---
+# Dashboard Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: swarm-production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      containers:
+      - name: dashboard
+        image: swarm-dashboard:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: NEXT_PUBLIC_API_URL
+          value: "https://yourdomain.com/api"
+        - name: NEXT_PUBLIC_LANGFUSE_HOST
+          value: "https://yourdomain.com/langfuse"
+        - name: API_URL
+          value: "http://swarm-manager:8001"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+
+---
+# Dashboard Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  namespace: swarm-production
+spec:
+  selector:
+    app: dashboard
+  ports:
+  - port: 3000
+    targetPort: 3000
+  type: ClusterIP
+
+---
+# Ingress for external access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: swarm-ingress
+  namespace: swarm-production
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  tls:
+  - hosts:
+    - yourdomain.com
+    secretName: swarm-tls
+  rules:
+  - host: yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: dashboard
+            port:
+              number: 3000
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: swarm-manager
+            port:
+              number: 8001
+      - path: /langfuse
+        pathType: Prefix
+        backend:
+          service:
+            name: langfuse
+            port:
+              number: 3000
+
+---
+# PersistentVolumeClaim for shared data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: swarm-data-pvc
+  namespace: swarm-production
+spec:
+  accessModes:
+  - ReadWriteMany
+  storageClassName: "efs"
+  resources:
+    requests:
+      storage: 50Gi
+
+---
+# HorizontalPodAutoscaler for Workers
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: swarm-worker-hpa
+  namespace: swarm-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: swarm-worker
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# NetworkPolicy for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: swarm-network-policy
+  namespace: swarm-production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: swarm-production
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: swarm-production
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53

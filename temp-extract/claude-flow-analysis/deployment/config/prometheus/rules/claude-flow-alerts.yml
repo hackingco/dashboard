@@ -1,0 +1,256 @@
+# Claude Flow Alerting Rules
+groups:
+  - name: claude-flow.alerts
+    rules:
+      # Application Health Alerts
+      - alert: ClaudeFlowDown
+        expr: up{job="claude-flow"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: application
+        annotations:
+          summary: "Claude Flow application is down"
+          description: "Claude Flow application has been down for more than 1 minute"
+          runbook_url: "https://docs.claude-flow.com/alerts/application-down"
+
+      - alert: ClaudeFlowHighLatency
+        expr: histogram_quantile(0.95, http_request_duration_seconds_bucket{job="claude-flow"}) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+          component: application
+        annotations:
+          summary: "Claude Flow high latency"
+          description: "95th percentile latency is {{ $value }}s"
+
+      - alert: ClaudeFlowHighErrorRate
+        expr: |
+          (
+            rate(http_requests_total{job="claude-flow",status=~"5.."}[5m]) /
+            rate(http_requests_total{job="claude-flow"}[5m])
+          ) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: application
+        annotations:
+          summary: "High error rate in Claude Flow"
+          description: "Error rate is {{ $value }}%"
+
+      # Memory and CPU Alerts
+      - alert: ClaudeFlowHighMemoryUsage
+        expr: container_memory_usage_bytes{name="claude-flow-app"} / container_spec_memory_limit_bytes{name="claude-flow-app"} * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          component: application
+        annotations:
+          summary: "Claude Flow high memory usage"
+          description: "Memory usage is {{ $value }}%"
+
+      - alert: ClaudeFlowHighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{name="claude-flow-app"}[5m]) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: application
+        annotations:
+          summary: "Claude Flow high CPU usage"
+          description: "CPU usage is {{ $value }}%"
+
+      # Database Alerts
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database has been down for more than 1 minute"
+
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL high connection usage"
+          description: "Connection usage is {{ $value }}%"
+
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag_seconds > 60
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL replication lag high"
+          description: "Replication lag is {{ $value }} seconds"
+
+      # Redis Alerts
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache has been down for more than 1 minute"
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Memory usage is {{ $value }}%"
+
+      - alert: RedisHighConnections
+        expr: redis_connected_clients > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis high connection count"
+          description: "Connected clients: {{ $value }}"
+
+      # ClickHouse Alerts
+      - alert: ClickHouseDown
+        expr: up{job="clickhouse"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: analytics
+        annotations:
+          summary: "ClickHouse is down"
+          description: "ClickHouse analytics database has been down for more than 1 minute"
+
+      - alert: ClickHouseHighMemoryUsage
+        expr: clickhouse_memory_usage_bytes / clickhouse_memory_limit_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: analytics
+        annotations:
+          summary: "ClickHouse high memory usage"
+          description: "Memory usage is {{ $value }}%"
+
+      # Langfuse Alerts
+      - alert: LangfuseDown
+        expr: up{job="langfuse"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: observability
+        annotations:
+          summary: "Langfuse is down"
+          description: "Langfuse observability platform has been down for more than 2 minutes"
+
+      - alert: LangfuseHighLatency
+        expr: histogram_quantile(0.95, http_request_duration_seconds_bucket{job="langfuse"}) > 5.0
+        for: 5m
+        labels:
+          severity: warning
+          component: observability
+        annotations:
+          summary: "Langfuse high latency"
+          description: "95th percentile latency is {{ $value }}s"
+
+      # System Resource Alerts
+      - alert: HighDiskUsage
+        expr: (node_filesystem_size_bytes - node_filesystem_free_bytes) / node_filesystem_size_bytes * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High disk usage"
+          description: "Disk usage is {{ $value }}% on {{ $labels.device }}"
+
+      - alert: SystemHighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "System high memory usage"
+          description: "Memory usage is {{ $value }}%"
+
+      - alert: SystemHighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "System high CPU usage"
+          description: "CPU usage is {{ $value }}%"
+
+      # Backup Alerts
+      - alert: BackupFailed
+        expr: backup_last_success_timestamp < (time() - 86400)
+        for: 1m
+        labels:
+          severity: critical
+          component: backup
+        annotations:
+          summary: "Backup failed"
+          description: "No successful backup in the last 24 hours"
+
+      - alert: BackupOld
+        expr: backup_last_success_timestamp < (time() - 172800)
+        for: 1m
+        labels:
+          severity: warning
+          component: backup
+        annotations:
+          summary: "Backup is old"
+          description: "Last successful backup was {{ $value }} seconds ago"
+
+  - name: claude-flow.capacity
+    rules:
+      # Capacity Planning Alerts
+      - alert: PredictedHighMemoryUsage
+        expr: predict_linear(node_memory_MemAvailable_bytes[6h], 24*3600) < 0
+        for: 5m
+        labels:
+          severity: warning
+          component: capacity
+        annotations:
+          summary: "Predicted memory exhaustion"
+          description: "Memory is predicted to be exhausted in 24 hours"
+
+      - alert: PredictedHighDiskUsage
+        expr: predict_linear(node_filesystem_free_bytes[6h], 24*3600) < 0
+        for: 5m
+        labels:
+          severity: warning
+          component: capacity
+        annotations:
+          summary: "Predicted disk exhaustion"
+          description: "Disk space is predicted to be exhausted in 24 hours"
+
+  - name: claude-flow.sli
+    rules:
+      # Service Level Indicators
+      - record: claude_flow:availability_5m
+        expr: avg_over_time(up{job="claude-flow"}[5m])
+
+      - record: claude_flow:latency_p95_5m
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="claude-flow"}[5m]))
+
+      - record: claude_flow:error_rate_5m
+        expr: |
+          rate(http_requests_total{job="claude-flow",status=~"5.."}[5m]) /
+          rate(http_requests_total{job="claude-flow"}[5m])
+
+      - record: claude_flow:throughput_5m
+        expr: rate(http_requests_total{job="claude-flow"}[5m])
